@@ -24,6 +24,14 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             Span::styled(cmd.as_str().to_owned(), Style::default().fg(Color::White)),
             Span::styled("\u{2588}", Style::default().fg(Color::Green)),
         ])),
+        AppMode::NewFile { name, from_clipboard } => {
+            let prefix = if *from_clipboard { "new (clipboard): " } else { "new: " };
+            Some(Line::from(vec![
+                Span::styled(prefix, Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::styled(name.as_str().to_owned(), Style::default().fg(Color::White)),
+                Span::styled("\u{2588}", Style::default().fg(Color::Yellow)),
+            ]))
+        }
         _ => None,
     };
     if let Some(line) = prompt_line {
@@ -45,6 +53,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             s.extend(key_hint(":", "Cmd"));
             s.extend(key_hint(";", "Split"));
             s.extend(key_hint("m", "Make"));
+            s.extend(key_hint("g", "Git"));
+            s.extend(key_hint("o", "Open"));
+            s.extend(key_hint("n", "New"));
             s.extend(key_hint("Tab", "Panel"));
             s.extend(key_hint("q", "Quit"));
             s
@@ -63,8 +74,15 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             s.extend(key_hint("j/k", "Navigate"));
             s
         }
-        // CommandInput / ExternalCommand handled above via early return.
-        AppMode::CommandInput { .. } | AppMode::ExternalCommand { .. } => vec![],
+        AppMode::GitMenu { .. } => {
+            let mut s = Vec::new();
+            s.extend(key_hint("Enter", "Run"));
+            s.extend(key_hint("Esc", "Cancel"));
+            s.extend(key_hint("j/k", "Navigate"));
+            s
+        }
+        // CommandInput / ExternalCommand / NewFile handled above via early return.
+        AppMode::CommandInput { .. } | AppMode::ExternalCommand { .. } | AppMode::NewFile { .. } => vec![],
     };
 
     frame.render_widget(

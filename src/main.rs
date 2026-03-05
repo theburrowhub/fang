@@ -231,6 +231,7 @@ fn navigate_to_dir(state: &mut AppState, path: PathBuf, tx: &UnboundedSender<Eve
     state.sidebar_tree = build_sidebar_tree(&path);
     schedule_directory_load(path.clone(), tx);
     schedule_header_info_load(&path, tx);
+    commands::title::set_window_title(&path);
 }
 
 /// Syncs mode.query with state.search_query, re-filters, and schedules a preview refresh.
@@ -523,6 +524,101 @@ fn handle_action(
                 }
             };
         }
+        // ── Git menu ─────────────────────────────────────────────────────────
+        Action::OpenGitMenu => {
+            state.mode = app::state::AppMode::GitMenu { selected: 0 };
+            state.preview_state = app::state::PreviewState::None;
+        }
+        Action::CloseGitMenu => {
+            state.mode = app::state::AppMode::Normal;
+        }
+        Action::GitNavDown => {
+            if let app::state::AppMode::GitMenu { selected } = &mut state.mode {
+                if *selected < commands::git::N_GIT_OPS - 1 {
+                    *selected += 1;
+                }
+            }
+        }
+        Action::GitNavUp => {
+            if let app::state::AppMode::GitMenu { selected } = &mut state.mode {
+                if *selected > 0 {
+                    *selected -= 1;
+                }
+            }
+        }
+        Action::RunGitItem => {
+            if let app::state::AppMode::GitMenu { selected } = state.mode {
+                let ops = commands::git::git_operations();
+                if let Some(op) = ops.get(selected) {
+                    let args: Vec<&'static str> = op.args.to_vec();
+                    let dir = state.current_dir.clone();
+                    let tx2 = tx.clone();
+                    state.make_output.clear();
+                    state.preview_state = app::state::PreviewState::MakeOutput { output: vec![] };
+                    state.preview_scroll = 0;
+                    state.mode = app::state::AppMode::Normal;
+                    tokio::spawn(async move {
+                        let _ = commands::git::run_git(&args, &dir, tx2).await;
+                    });
+                }
+            }
+        }
+        // ── Open with system default ──────────────────────────────────────────
+        Action::OpenWithSystem => {
+            if let Some(entry) = state.selected_entry() {
+                let path = entry.path.clone();
+                match commands::open::open_with_system(&path) {
+                    Ok(()) => {
+                        state.status_message = Some(format!("Opened: {}", path.display()));
+                    }
+                    Err(e) => {
+                        state.status_message = Some(format!("Open error: {}", e));
+                    }
+                }
+            }
+        }
+        // ── New file ──────────────────────────────────────────────────────────
+        Action::OpenNewFile => {
+            state.mode = app::state::AppMode::NewFile { name: String::new(), from_clipboard: false };
+        }
+        Action::OpenNewFileFromClipboard => {
+            state.mode = app::state::AppMode::NewFile { name: String::new(), from_clipboard: true };
+        }
+        Action::NewFileChar(c) => {
+            if let app::state::AppMode::NewFile { name, .. } = &mut state.mode {
+                name.push(*c);
+            }
+        }
+        Action::NewFileBackspace => {
+            if let app::state::AppMode::NewFile { name, .. } = &mut state.mode {
+                name.pop();
+            }
+        }
+        Action::CloseNewFile => {
+            state.mode = app::state::AppMode::Normal;
+        }
+        Action::CreateNewFile => {
+            let (name, from_clipboard) =
+                if let app::state::AppMode::NewFile { name, from_clipboard } = &state.mode {
+                    (name.clone(), *from_clipboard)
+                } else { return; };
+            state.mode = app::state::AppMode::Normal;
+            if name.is_empty() { return; }
+            let file_path = state.current_dir.join(&name);
+            let dir = state.current_dir.clone();
+            let tx2 = tx.clone();
+            tokio::spawn(async move {
+                let content: Vec<u8> = if from_clipboard {
+                    commands::clipboard::read_clipboard().unwrap_or_default()
+                } else {
+                    vec![]
+                };
+                match tokio::fs::write(&file_path, &content).await {
+                    Ok(()) => { schedule_directory_load(dir, &tx2); }
+                    Err(e) => { tracing::warn!("Failed to create file: {}", e); }
+                }
+            });
+        }
         Action::Noop => {}
     }
 }
@@ -630,6 +726,23 @@ fn handle_event(event: Event, state: &mut AppState, tx: &UnboundedSender<Event>)
                 output.push(done_line);
             }
         }
+        Event::GitOutputLine(line) => {
+            if let app::state::PreviewState::MakeOutput { output } = &mut state.preview_state {
+                output.push(line.clone());
+            }
+            state.make_output.push(line);
+        }
+        Event::GitDone { exit_code } => {
+            let done_line = if exit_code == 0 {
+                "\n[done]".to_string()
+            } else {
+                format!("\n[exited with code {}]", exit_code)
+            };
+            if let app::state::PreviewState::MakeOutput { output } = &mut state.preview_state {
+                output.push(done_line.clone());
+            }
+            state.make_output.push(done_line);
+        }
     }
 }
 
@@ -671,6 +784,9 @@ async fn main() -> Result<()> {
 
     // Load header info (git branch + dev envs) for initial directory
     schedule_header_info_load(&initial_dir, &tx);
+
+    // Set initial window title
+    commands::title::set_window_title(&initial_dir);
 
     // Setup event sources
     let mut crossterm_events = EventStream::new();

@@ -86,6 +86,10 @@ pub enum AppMode {
     /// External shell command prompt (activated with `;`).
     /// Runs the command in a new terminal split/pane.
     ExternalCommand { cmd: String },
+    /// Git operations menu modal.
+    GitMenu { selected: usize },
+    /// Creating a new file. `from_clipboard` = true means paste clipboard content.
+    NewFile { name: String, from_clipboard: bool },
 }
 
 // ─── FocusedPanel ─────────────────────────────────────────────────────────────
