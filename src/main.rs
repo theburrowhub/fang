@@ -231,6 +231,7 @@ fn navigate_to_dir(state: &mut AppState, path: PathBuf, tx: &UnboundedSender<Eve
     state.sidebar_tree = build_sidebar_tree(&path);
     schedule_directory_load(path.clone(), tx);
     schedule_header_info_load(&path, tx);
+    commands::title::set_window_title(&path);
 }
 
 /// Syncs mode.query with state.search_query, re-filters, and schedules a preview refresh.
@@ -654,6 +655,7 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
     tracing::info!("Fang starting in {:?}", initial_dir);
+    commands::title::set_window_title(&initial_dir);
 
     // Initialize state
     let mut state = AppState::new(initial_dir.clone());
@@ -721,6 +723,7 @@ async fn main() -> Result<()> {
         }
     }
 
+    commands::title::reset_window_title();
     restore_terminal(&mut terminal)?;
     tracing::info!("Fang exited cleanly");
 
