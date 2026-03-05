@@ -34,12 +34,52 @@ pub fn git_operations() -> Vec<GitOperation> {
     ]
 }
 
+/// Resolve the `git` binary, checking PATH then common installation paths.
+fn find_git_binary() -> Option<std::path::PathBuf> {
+    // Fast path: let the OS resolve via PATH
+    if std::process::Command::new("git")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok()
+    {
+        return Some(std::path::PathBuf::from("git"));
+    }
+    // Common locations on macOS and Linux
+    for path in &[
+        "/usr/bin/git",
+        "/usr/local/bin/git",
+        "/opt/homebrew/bin/git",
+        "/opt/local/bin/git",
+    ] {
+        if std::path::Path::new(path).exists() {
+            return Some(std::path::PathBuf::from(path));
+        }
+    }
+    None
+}
+
 /// Runs `git <args>` in `dir`, streaming each output line as `Event::GitOutputLine`
 /// and signalling completion with `Event::GitDone`.
 pub async fn run_git(args: &[&str], dir: &Path, tx: UnboundedSender<Event>) -> Result<()> {
     use tokio::process::Command;
 
-    let mut child = match Command::new("git")
+    let git_bin = match find_git_binary() {
+        Some(p) => p,
+        None => {
+            let _ = tx.send(Event::GitOutputLine(
+                "Error: 'git' not found in PATH or common locations.".to_string(),
+            ));
+            let _ = tx.send(Event::GitOutputLine(
+                "  macOS: run `xcode-select --install` or install via Homebrew (`brew install git`)".to_string(),
+            ));
+            let _ = tx.send(Event::GitDone { exit_code: -1 });
+            return Ok(());
+        }
+    };
+
+    let mut child = match Command::new(&git_bin)
         .args(args)
         .current_dir(dir)
         .stdin(std::process::Stdio::null())
@@ -49,7 +89,7 @@ pub async fn run_git(args: &[&str], dir: &Path, tx: UnboundedSender<Event>) -> R
     {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            let _ = tx.send(Event::GitOutputLine("Error: 'git' not found in PATH".to_string()));
+            let _ = tx.send(Event::GitOutputLine("Error: 'git' not found".to_string()));
             let _ = tx.send(Event::GitDone { exit_code: -1 });
             return Ok(());
         }
