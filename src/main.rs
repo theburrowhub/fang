@@ -391,9 +391,15 @@ fn handle_action(
                 };
                 state.preview_scroll = 0;
                 state.mode = app::state::AppMode::Normal;
+
+                // Stdin pipe: keypresses typed while the command runs are forwarded here.
+                let (stdin_tx, mut stdin_rx) =
+                    tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+                state.command_stdin = Some(stdin_tx);
+
                 tokio::spawn(async move {
                     use tokio::process::Command;
-                    use tokio::io::{AsyncBufReadExt, BufReader};
+                    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
                     use std::os::unix::process::CommandExt;
 
                     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
@@ -401,29 +407,37 @@ fn handle_action(
                     cmd_builder
                         .args(["-i", "-c", &cmd])
                         .current_dir(&dir)
-                        .stdin(std::process::Stdio::null())
+                        .stdin(std::process::Stdio::piped())   // pipe, not null
                         .stdout(std::process::Stdio::piped())
                         .stderr(std::process::Stdio::piped());
 
-                    // setsid() in the child process creates a new session with no controlling
-                    // terminal. This prevents the interactive shell from calling tcsetpgrp()
-                    // against fang's terminal (even via /dev/tty), which would send SIGTTIN
-                    // to fang and suspend it.
+                    // setsid() creates a new session with no controlling terminal so the
+                    // interactive shell cannot call tcsetpgrp() against fang's terminal.
                     unsafe {
-                        cmd_builder.pre_exec(|| {
-                            libc::setsid();
-                            Ok(())
-                        });
+                        cmd_builder.pre_exec(|| { libc::setsid(); Ok(()) });
                     }
 
                     let mut child = match cmd_builder.spawn() {
                         Ok(c) => c,
                         Err(e) => {
                             let _ = tx.send(Event::MakeOutputLine(format!("Error: {}", e)));
-                            let _ = tx.send(Event::MakeDone { exit_code: -1 });
+                            let _ = tx.send(Event::CommandOutput { lines: vec![], exit_code: -1 });
                             return;
                         }
                     };
+
+                    // Relay stdin channel → child stdin
+                    let mut child_stdin = child.stdin.take().expect("stdin pipe");
+                    let stdin_relay = tokio::spawn(async move {
+                        while let Some(bytes) = stdin_rx.recv().await {
+                            if child_stdin.write_all(&bytes).await.is_err() {
+                                break;
+                            }
+                            let _ = child_stdin.flush().await;
+                        }
+                        // Channel closed → drop child_stdin → EOF sent to child
+                    });
+
                     let stdout = child.stdout.take().expect("stdout");
                     let stderr = child.stderr.take().expect("stderr");
                     let mut stdout_reader = BufReader::new(stdout).lines();
@@ -437,13 +451,12 @@ fn handle_action(
                     });
                     let stderr_task = tokio::spawn(async move {
                         while let Ok(Some(line)) = stderr_reader.next_line().await {
-                            if tx_err.send(Event::MakeOutputLine(format!("stderr: {}", line))).is_err() { break; }
+                            if tx_err.send(Event::MakeOutputLine(line)).is_err() { break; }
                         }
                     });
                     let status = child.wait().await.ok();
-                    let _ = tokio::join!(stdout_task, stderr_task);
+                    let _ = tokio::join!(stdout_task, stderr_task, stdin_relay);
                     let code = status.and_then(|s| s.code()).unwrap_or(-1);
-                    // Use CommandOutput (not MakeDone) so we don't show "make completed" message.
                     let _ = tx.send(Event::CommandOutput { lines: vec![], exit_code: code });
                 });
             } else {
@@ -485,6 +498,41 @@ fn handle_action(
 fn handle_event(event: Event, state: &mut AppState, tx: &UnboundedSender<Event>) {
     match event {
         Event::Key(key_event) => {
+            // If a command is running, relay keystrokes to its stdin instead of navigating.
+            if let Some(ref stdin_tx) = state.command_stdin {
+                use crossterm::event::{KeyCode, KeyModifiers};
+                let bytes: Option<Vec<u8>> = match key_event.code {
+                    // Ctrl+C → send ETX (0x03); many programs treat this as cancel
+                    KeyCode::Char('c')
+                        if key_event.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
+                        Some(vec![0x03])
+                    }
+                    KeyCode::Enter => Some(vec![b'\n']),
+                    KeyCode::Backspace => Some(vec![b'\x7f']),
+                    KeyCode::Char(c) => {
+                        // Encode the character as UTF-8 bytes
+                        let mut buf = [0u8; 4];
+                        let s = c.encode_utf8(&mut buf);
+                        // Echo it in the preview so the user sees what they typed
+                        if let app::state::PreviewState::MakeOutput { output } =
+                            &mut state.preview_state
+                        {
+                            match output.last_mut() {
+                                Some(last) if !last.ends_with('\n') => last.push(c),
+                                _ => output.push(s.to_string()),
+                            }
+                        }
+                        Some(s.as_bytes().to_vec())
+                    }
+                    // Ignore all other keys (e.g. arrows, function keys)
+                    _ => None,
+                };
+                if let Some(b) = bytes {
+                    let _ = stdin_tx.send(b);
+                }
+                return;
+            }
             let action = map_key_to_action(&key_event, &state.mode, &state.focused_panel);
             handle_action(&action, state, tx);
         }
@@ -536,7 +584,10 @@ fn handle_event(event: Event, state: &mut AppState, tx: &UnboundedSender<Event>)
             state.header_info = info;
         }
         Event::CommandOutput { exit_code, .. } => {
-            // Append exit status line to the command output in the preview panel.
+            // Command finished: release the stdin pipe (signals EOF to child) and
+            // re-enable normal keyboard navigation.
+            state.command_stdin = None;
+            // Append exit status to the preview.
             let done_line = if exit_code == 0 {
                 "\n[done]".to_string()
             } else {

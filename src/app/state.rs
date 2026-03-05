@@ -156,6 +156,9 @@ pub struct AppState {
     pub should_quit: bool,
     /// Request a full terminal clear before the next draw (clears syntect artifact cells).
     pub needs_terminal_clear: bool,
+    /// Stdin pipe for the currently-running : command.
+    /// While Some, keypresses are relayed to the child process instead of navigating.
+    pub command_stdin: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
 }
 
 impl AppState {
@@ -182,6 +185,7 @@ impl AppState {
             header_info: HeaderInfo::default(),
             should_quit: false,
             needs_terminal_clear: false,
+            command_stdin: None,
         }
     }
 
