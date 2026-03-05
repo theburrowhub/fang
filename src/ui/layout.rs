@@ -36,8 +36,8 @@ fn render_main_panels(frame: &mut Frame, area: Rect, state: &AppState) {
         } else {
             // file_list + preview
             let [list_area, preview_area] = Layout::horizontal([
-                Constraint::Percentage(40),
-                Constraint::Percentage(60),
+                Constraint::Percentage(33),
+                Constraint::Percentage(67),
             ])
             .areas(area);
             components::file_list::render(frame, list_area, state);
@@ -48,7 +48,7 @@ fn render_main_panels(frame: &mut Frame, area: Rect, state: &AppState) {
         if state.preview_visible {
             let [sidebar_area, list_area, preview_area] = Layout::horizontal([
                 Constraint::Length(22),
-                Constraint::Percentage(35),
+                Constraint::Percentage(27),
                 Constraint::Min(0),
             ])
             .areas(area);
