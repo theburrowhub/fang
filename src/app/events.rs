@@ -17,4 +17,6 @@ pub enum Event {
     MakeDone { exit_code: i32 },
     /// Directory loading completed (from background task)
     DirectoryLoaded { path: PathBuf, entries: Vec<FileEntry> },
+    /// Shell command completed (output streamed via MakeOutputLine; this signals completion)
+    CommandOutput { lines: Vec<String>, exit_code: i32 },
 }

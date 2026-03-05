@@ -247,6 +247,99 @@ fn handle_action(
                 });
             }
         }
+        Action::OpenCommandInput => {
+            state.mode = app::state::AppMode::CommandInput { cmd: String::new() };
+        }
+        Action::CommandInputChar(c) => {
+            if let app::state::AppMode::CommandInput { cmd } = &mut state.mode {
+                cmd.push(*c);
+            }
+        }
+        Action::CommandInputBackspace => {
+            if let app::state::AppMode::CommandInput { cmd } = &mut state.mode {
+                cmd.pop();
+            }
+        }
+        Action::CloseCommandInput => {
+            state.mode = app::state::AppMode::Normal;
+        }
+        Action::RunCommand => {
+            // Extract the typed command from the mode before transitioning away.
+            let cmd = if let app::state::AppMode::CommandInput { cmd } = &state.mode {
+                cmd.clone()
+            } else {
+                String::new()
+            };
+            if !cmd.is_empty() {
+                let dir = state.current_dir.clone();
+                let tx = tx.clone();
+                // Show output in preview using MakeOutput state (reuse existing infrastructure).
+                state.preview_state = app::state::PreviewState::MakeOutput {
+                    output: vec![format!("$ {}", cmd)],
+                };
+                state.preview_scroll = 0;
+                state.mode = app::state::AppMode::Normal;
+
+                tokio::spawn(async move {
+                    use tokio::process::Command;
+                    use tokio::io::{AsyncBufReadExt, BufReader};
+
+                    // Use the user's login shell with -i so aliases are available.
+                    let shell = std::env::var("SHELL")
+                        .unwrap_or_else(|_| "/bin/bash".to_string());
+
+                    let mut child = match Command::new(&shell)
+                        .args(["-i", "-c", &cmd])
+                        .current_dir(&dir)
+                        .stdout(std::process::Stdio::piped())
+                        .stderr(std::process::Stdio::piped())
+                        .spawn()
+                    {
+                        Ok(c) => c,
+                        Err(e) => {
+                            let _ = tx.send(Event::MakeOutputLine(
+                                format!("Error: failed to run command: {}", e)
+                            ));
+                            let _ = tx.send(Event::MakeDone { exit_code: -1 });
+                            return;
+                        }
+                    };
+
+                    let stdout = child.stdout.take().expect("stdout pipe");
+                    let stderr = child.stderr.take().expect("stderr pipe");
+                    let mut stdout_reader = BufReader::new(stdout).lines();
+                    let mut stderr_reader = BufReader::new(stderr).lines();
+                    let tx_out = tx.clone();
+                    let tx_err = tx.clone();
+
+                    // Stream stdout and stderr concurrently; stop early if the receiver is gone.
+                    let stdout_task = tokio::spawn(async move {
+                        while let Ok(Some(line)) = stdout_reader.next_line().await {
+                            if tx_out.send(Event::MakeOutputLine(line)).is_err() {
+                                break;
+                            }
+                        }
+                    });
+                    let stderr_task = tokio::spawn(async move {
+                        while let Ok(Some(line)) = stderr_reader.next_line().await {
+                            if tx_err.send(Event::MakeOutputLine(format!("stderr: {}", line))).is_err() {
+                                break;
+                            }
+                        }
+                    });
+
+                    let exit_status = child.wait().await.unwrap_or_else(|_| {
+                        std::process::ExitStatus::default()
+                    });
+                    let _ = tokio::join!(stdout_task, stderr_task);
+                    let code = exit_status.code().unwrap_or(-1);
+                    let _ = tx.send(Event::MakeDone { exit_code: code });
+                });
+            } else {
+                // Empty command — return to Normal mode without doing anything.
+                state.mode = app::state::AppMode::Normal;
+            }
+        }
         Action::PreviewScrollUp => {
             state.preview_scroll = state.preview_scroll.saturating_sub(3);
         }
@@ -329,6 +422,9 @@ fn handle_event(event: Event, state: &mut AppState, tx: &UnboundedSender<Event>)
                 schedule_preview(state, tx);
             }
         }
+        // CommandOutput is informational — output was already streamed via MakeOutputLine/MakeDone.
+        // We handle it here to satisfy exhaustiveness; no extra state update is required.
+        Event::CommandOutput { .. } => {}
     }
 }
 

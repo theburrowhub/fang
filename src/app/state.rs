@@ -69,6 +69,8 @@ pub enum AppMode {
     Search { query: String },
     /// Make-target selection modal is open.
     MakeTarget,
+    /// Shell command input prompt (activated with `:`).
+    CommandInput { cmd: String },
 }
 
 // ─── FocusedPanel ─────────────────────────────────────────────────────────────
