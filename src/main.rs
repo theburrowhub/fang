@@ -113,6 +113,8 @@ fn navigate_to_dir(state: &mut AppState, path: PathBuf, tx: &UnboundedSender<Eve
     state.search_query.clear();
     state.mode = app::state::AppMode::Normal;
     state.preview_state = app::state::PreviewState::Loading;
+    state.preview_scroll = 0;
+    state.needs_terminal_clear = true;
     state.sidebar_tree = build_sidebar_tree(&path);
     schedule_directory_load(path, tx);
 }
@@ -142,12 +144,19 @@ fn handle_action(
             let count = state.visible_count();
             if count > 0 && state.selected_index < count - 1 {
                 state.selected_index += 1;
+                // Clear immediately so stale preview cells don't persist.
+                state.preview_state = app::state::PreviewState::None;
+                state.preview_scroll = 0;
+                state.needs_terminal_clear = true;
                 schedule_preview(state, tx);
             }
         }
         Action::NavUp => {
             if state.selected_index > 0 {
                 state.selected_index -= 1;
+                state.preview_state = app::state::PreviewState::None;
+                state.preview_scroll = 0;
+                state.needs_terminal_clear = true;
                 schedule_preview(state, tx);
             }
         }
@@ -365,6 +374,14 @@ async fn main() -> Result<()> {
 
     // Main event loop
     loop {
+        // When navigation or preview-state transitions happen, the syntect-coloured cells
+        // from the previous preview can survive ratatui's diff algorithm.  Calling
+        // terminal.clear() forces a full repaint, eliminating any stale artefacts.
+        if state.needs_terminal_clear {
+            terminal.clear()?;
+            state.needs_terminal_clear = false;
+        }
+
         // Render current state
         terminal.draw(|f| ui::layout::draw(f, &state))?;
 
@@ -386,6 +403,7 @@ async fn main() -> Result<()> {
                         handle_event(Event::Key(key), &mut state, &tx);
                     }
                     CrosstermEvent::Resize(w, h) => {
+                        state.needs_terminal_clear = true;
                         handle_event(Event::Resize(w, h), &mut state, &tx);
                     }
                     _ => {}

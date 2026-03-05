@@ -137,6 +137,8 @@ pub struct AppState {
 
     // Control
     pub should_quit: bool,
+    /// Request a full terminal clear before the next draw (clears syntect artifact cells).
+    pub needs_terminal_clear: bool,
 }
 
 impl AppState {
@@ -161,6 +163,7 @@ impl AppState {
             preview_visible: true,
             status_message: None,
             should_quit: false,
+            needs_terminal_clear: false,
         }
     }
 
