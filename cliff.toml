@@ -1,0 +1,53 @@
+# git-cliff configuration — https://git-cliff.org/docs/configuration
+# Conventional commits → semver bumps:
+#   feat:             minor  (0.X.0)
+#   fix: / perf:      patch  (0.0.X)
+#   feat!/fix!/BREAKING CHANGE:  major  (X.0.0)
+#   chore/docs/style/refactor/test/ci/build:  no bump (not shown in changelog)
+
+[changelog]
+header = "# Changelog\n\nAll notable changes to Fang are documented here.\n"
+body = """
+{% if version %}\
+## [{{ version | trim_start_matches(pat="v") }}] — {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## [Unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits %}
+- {{ commit.message | upper_first }} ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/theburrowhub/fang/commit/{{ commit.id }}))\
+  {% if commit.breaking %} **BREAKING**{% endif %}
+{% endfor %}
+{% endfor %}\n
+"""
+trim = true
+footer = ""
+postprocessors = []
+
+[git]
+# Only commits with these types appear in the changelog and count for bumping.
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+commit_preprocessors = []
+commit_parsers = [
+    { message = "^feat",              group = "Features" },
+    { message = "^fix",               group = "Bug Fixes" },
+    { message = "^perf",              group = "Performance" },
+    { message = "^refactor",          group = "Refactoring",  skip = true },
+    { message = "^docs",              skip = true },
+    { message = "^style",             skip = true },
+    { message = "^test",              skip = true },
+    { message = "^chore",             skip = true },
+    { message = "^ci",                skip = true },
+    { message = "^build",             skip = true },
+    { message = ".*\\[skip ci\\].*",  skip = true },
+]
+protect_breaking_commits = false
+filter_commits = true
+tag_pattern = "v[0-9].*"
+skip_tags = ""
+ignore_tags = ""
+topo_order = false
+sort_commits = "oldest"

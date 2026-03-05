@@ -1,0 +1,326 @@
+name: CI / CD
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Triggers
+# ─────────────────────────────────────────────────────────────────────────────
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# ─────────────────────────────────────────────────────────────────────────────
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  BINARY: fang
+
+permissions:
+  contents: write
+
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+
+  # ── 1. Quality: fmt + clippy + test (all platforms) ─────────────────────
+  test:
+    name: Test · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - run: cargo fmt --check
+      - run: cargo clippy -- -D warnings
+      - run: cargo build
+      - run: cargo test
+
+  # ── 2. Release prep: conventional commits → version bump → tag ───────────
+  # Runs only on pushes to main (not PRs, not bot commits tagged [skip ci]).
+  release-prep:
+    name: Release prep
+    needs: test
+    if: >
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      released: ${{ steps.bump.outputs.released }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0       # full history required for git-cliff analysis
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Install git-cliff — the Rust tool for conventional commit changelog/versioning
+      - name: Install git-cliff
+        uses: orhun/git-cliff-action@v2
+        with:
+          args: --version        # just verify install; real usage is below
+        env:
+          OUTPUT: /dev/null
+
+      - name: Determine next version
+        id: bump
+        run: |
+          set -euo pipefail
+
+          CURRENT=$(grep '^version' Cargo.toml | head -1 | sed 's/version = "//;s/"//')
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          if [ -z "$LAST_TAG" ]; then
+            # No tags yet — first release.
+            NEXT="0.1.0"
+          else
+            # git-cliff --bumped-version outputs the next semver tag (e.g. "v0.2.0")
+            NEXT=$(git cliff --bumped-version 2>/dev/null | sed 's/^v//' || echo "")
+          fi
+
+          if [ -z "$NEXT" ] || [ "$NEXT" = "$CURRENT" ]; then
+            echo "No releasable commits since last tag — skipping release."
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            echo "version=$CURRENT"  >> "$GITHUB_OUTPUT"
+          else
+            echo "New version: $NEXT  (was $CURRENT)"
+            echo "released=true"  >> "$GITHUB_OUTPUT"
+            echo "version=$NEXT"  >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump Cargo.toml version
+        if: steps.bump.outputs.released == 'true'
+        run: |
+          V="${{ steps.bump.outputs.version }}"
+          sed -i "s/^version = \".*\"/version = \"$V\"/" Cargo.toml
+
+      - name: Generate CHANGELOG.md
+        if: steps.bump.outputs.released == 'true'
+        uses: orhun/git-cliff-action@v2
+        with:
+          args: --output CHANGELOG.md --tag "v${{ steps.bump.outputs.version }}"
+        env:
+          OUTPUT: CHANGELOG.md
+
+      - name: Commit version bump + changelog, create tag
+        if: steps.bump.outputs.released == 'true'
+        run: |
+          V="${{ steps.bump.outputs.version }}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml CHANGELOG.md
+          # [skip ci] prevents this push from re-triggering the workflow
+          git commit -m "chore: release v${V} [skip ci]"
+          git tag "v${V}"
+          git push origin main --follow-tags
+
+  # ── 3. Cross-compile binaries (matrix, parallel) ─────────────────────────
+  build:
+    name: Build · ${{ matrix.target }}
+    needs: release-prep
+    if: needs.release-prep.outputs.released == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux (static musl)
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+          # macOS
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          # Windows
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Check out the newly-created tag so we build the released code
+          ref: v${{ needs.release-prep.outputs.version }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install Linux cross-compilation tools
+        if: contains(matrix.target, 'linux-musl')
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y musl-tools
+          if [[ "${{ matrix.target }}" == aarch64-* ]]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu
+            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package
+        id: pkg
+        shell: bash
+        run: |
+          V="${{ needs.release-prep.outputs.version }}"
+          T="${{ matrix.target }}"
+
+          if [[ "$T" == *windows* ]]; then
+            BIN="target/${T}/release/${BINARY}.exe"
+            ARCHIVE="${BINARY}_${V}_${T}.zip"
+            cp "$BIN" "${BINARY}.exe"
+            7z a "$ARCHIVE" "${BINARY}.exe" README.md CHANGELOG.md
+          else
+            BIN="target/${T}/release/${BINARY}"
+            ARCHIVE="${BINARY}_${V}_${T}.tar.gz"
+            cp "$BIN" "${BINARY}"
+            tar -czf "$ARCHIVE" "${BINARY}" README.md CHANGELOG.md
+          fi
+
+          # SHA256 (platform-agnostic)
+          if command -v sha256sum &>/dev/null; then
+            SHA=$(sha256sum "$ARCHIVE" | cut -d' ' -f1)
+          else
+            SHA=$(shasum -a 256 "$ARCHIVE" | cut -d' ' -f1)
+          fi
+
+          echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA"      >> "$GITHUB_OUTPUT"
+
+          # Write sha file named after target for easy collection
+          echo "$SHA" > "sha256_${T}.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.target }}
+          path: |
+            ${{ steps.pkg.outputs.archive }}
+            sha256_${{ matrix.target }}.txt
+
+  # ── 4. Publish GitHub Release + update Homebrew tap ─────────────────────
+  publish:
+    name: Publish & Homebrew
+    needs: [release-prep, build]
+    if: needs.release-prep.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.release-prep.outputs.version }}
+
+      - name: Download all dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist/
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lh dist/
+
+      - name: Read SHA256s
+        id: sha
+        run: |
+          read_sha() { cat "dist/sha256_${1}.txt" 2>/dev/null || echo "0000000000000000000000000000000000000000000000000000000000000000"; }
+          echo "linux_amd64=$(read_sha x86_64-unknown-linux-musl)"    >> "$GITHUB_OUTPUT"
+          echo "linux_arm64=$(read_sha aarch64-unknown-linux-musl)"   >> "$GITHUB_OUTPUT"
+          echo "darwin_amd64=$(read_sha x86_64-apple-darwin)"         >> "$GITHUB_OUTPUT"
+          echo "darwin_arm64=$(read_sha aarch64-apple-darwin)"        >> "$GITHUB_OUTPUT"
+          echo "windows_amd64=$(read_sha x86_64-pc-windows-msvc)"     >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.release-prep.outputs.version }}
+          name: v${{ needs.release-prep.outputs.version }}
+          body_path: CHANGELOG.md
+          files: dist/${{ env.BINARY }}_*
+          draft: false
+          prerelease: ${{ contains(needs.release-prep.outputs.version, '-') }}
+
+      - name: Update Homebrew tap
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          V="${{ needs.release-prep.outputs.version }}"
+          git clone \
+            "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/theburrowhub/homebrew-tap.git" \
+            homebrew-tap
+
+          cat > homebrew-tap/Formula/fang.rb <<FORMULA
+          # typed: false
+          # frozen_string_literal: true
+
+          class Fang < Formula
+            desc "A modern, fast terminal file explorer"
+            homepage "https://theburrowhub.github.io/fang"
+            version "${V}"
+            license "MIT"
+
+            on_macos do
+              on_arm do
+                url "https://github.com/theburrowhub/fang/releases/download/v#{version}/fang_#{version}_aarch64-apple-darwin.tar.gz"
+                sha256 "${{ steps.sha.outputs.darwin_arm64 }}"
+              end
+              on_intel do
+                url "https://github.com/theburrowhub/fang/releases/download/v#{version}/fang_#{version}_x86_64-apple-darwin.tar.gz"
+                sha256 "${{ steps.sha.outputs.darwin_amd64 }}"
+              end
+            end
+
+            on_linux do
+              on_arm do
+                url "https://github.com/theburrowhub/fang/releases/download/v#{version}/fang_#{version}_aarch64-unknown-linux-musl.tar.gz"
+                sha256 "${{ steps.sha.outputs.linux_arm64 }}"
+              end
+              on_intel do
+                url "https://github.com/theburrowhub/fang/releases/download/v#{version}/fang_#{version}_x86_64-unknown-linux-musl.tar.gz"
+                sha256 "${{ steps.sha.outputs.linux_amd64 }}"
+              end
+            end
+
+            def install
+              bin.install "fang"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/fang --version")
+            end
+          end
+          FORMULA
+
+          cd homebrew-tap
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/fang.rb
+          git commit -m "fang: update to v${V}"
+          git push
