@@ -44,6 +44,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             s.extend(key_hint("/", "Search"));
             s.extend(key_hint(":", "Cmd"));
             s.extend(key_hint(";", "Split"));
+            s.extend(key_hint("o", "Open"));
             s.extend(key_hint("m", "Make"));
             s.extend(key_hint("Tab", "Panel"));
             s.extend(key_hint("q", "Quit"));

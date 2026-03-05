@@ -523,6 +523,19 @@ fn handle_action(
                 }
             };
         }
+        Action::OpenWithSystem => {
+            if let Some(entry) = state.selected_entry() {
+                let path = entry.path.clone();
+                match commands::open::open_with_system(&path) {
+                    Ok(()) => {
+                        state.status_message = Some(format!("Opened: {}", path.display()));
+                    }
+                    Err(e) => {
+                        state.status_message = Some(format!("Open error: {}", e));
+                    }
+                }
+            }
+        }
         Action::Noop => {}
     }
 }

@@ -29,6 +29,7 @@ pub enum Action {
     ExternalCommandBackspace,
     RunExternalCommand,
     CloseExternalCommand,
+    OpenWithSystem,
     Noop,
 }
 
@@ -65,6 +66,7 @@ pub fn map_key_to_action(
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
             KeyCode::Char(':') => Action::OpenCommandInput,
             KeyCode::Char(';') => Action::OpenExternalCommand,
+            KeyCode::Char('o') => Action::OpenWithSystem,
             _ => Action::Noop,
         },
         AppMode::Search { .. } => match key.code {
