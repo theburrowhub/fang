@@ -59,6 +59,18 @@ pub enum PreviewState {
     Error(String),
 }
 
+// ─── HeaderInfo ───────────────────────────────────────────────────────────────
+
+/// Git branch and development environment information shown in the header bar.
+#[derive(Debug, Clone, Default)]
+pub struct HeaderInfo {
+    /// Current git branch name, if the directory is inside a git repo.
+    pub git_branch: Option<String>,
+    /// Detected development environment tools: (display_name, version_string)
+    /// e.g. [("py", "3.11.2"), ("go", "1.22.0"), ("node", "20.11.0")]
+    pub dev_envs: Vec<(String, String)>,
+}
+
 // ─── AppMode ──────────────────────────────────────────────────────────────────
 
 /// Current input mode.
@@ -69,6 +81,8 @@ pub enum AppMode {
     Search { query: String },
     /// Make-target selection modal is open.
     MakeTarget,
+    /// Shell command input prompt (activated with `:`).
+    CommandInput { cmd: String },
 }
 
 // ─── FocusedPanel ─────────────────────────────────────────────────────────────
@@ -135,6 +149,9 @@ pub struct AppState {
     // Status bar
     pub status_message: Option<String>,
 
+    // Header info (git branch + dev envs)
+    pub header_info: HeaderInfo,
+
     // Control
     pub should_quit: bool,
     /// Request a full terminal clear before the next draw (clears syntect artifact cells).
@@ -162,6 +179,7 @@ impl AppState {
             sidebar_visible: true,
             preview_visible: true,
             status_message: None,
+            header_info: HeaderInfo::default(),
             should_quit: false,
             needs_terminal_clear: false,
         }

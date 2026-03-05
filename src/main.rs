@@ -66,6 +66,117 @@ fn schedule_preview(state: &AppState, tx: &UnboundedSender<Event>) {
     }
 }
 
+/// Collects git branch and dev environment info for the given directory.
+/// Runs dev env probes concurrently via tokio::join! and sends HeaderInfoReady when done.
+fn schedule_header_info_load(dir: &std::path::Path, tx: &UnboundedSender<Event>) {
+    let dir = dir.to_path_buf();
+    let tx = tx.clone();
+    tokio::spawn(async move {
+        let mut info = app::state::HeaderInfo::default();
+
+        // Git branch — sequential: SHA lookup only needed on detached HEAD
+        if let Ok(output) = tokio::process::Command::new("git")
+            .args(["-C", dir.to_str().unwrap_or("."), "rev-parse", "--abbrev-ref", "HEAD"])
+            .output()
+            .await
+        {
+            if output.status.success() {
+                let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !branch.is_empty() && branch != "HEAD" {
+                    info.git_branch = Some(branch);
+                } else if branch == "HEAD" {
+                    // Detached HEAD — show short SHA
+                    if let Ok(sha_out) = tokio::process::Command::new("git")
+                        .args(["-C", dir.to_str().unwrap_or("."), "rev-parse", "--short", "HEAD"])
+                        .output()
+                        .await
+                    {
+                        let sha = String::from_utf8_lossy(&sha_out.stdout).trim().to_string();
+                        if !sha.is_empty() {
+                            info.git_branch = Some(format!("@{}", sha));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Dev env probes — all independent, run concurrently
+        let venv_python = dir.join(".venv").join("bin").join("python");
+        let venv_python_win = dir.join(".venv").join("Scripts").join("python.exe");
+        let python_path = if venv_python.exists() {
+            Some(venv_python)
+        } else if venv_python_win.exists() {
+            Some(venv_python_win)
+        } else {
+            None
+        };
+
+        let has_go_mod = dir.join("go.mod").exists();
+        let has_package_json = dir.join("package.json").exists();
+        let has_cargo_toml = dir.join("Cargo.toml").exists();
+
+        let (py_result, go_result, node_result, rs_result) = tokio::join!(
+            async {
+                let Some(py_path) = python_path else { return None };
+                let out = tokio::process::Command::new(&py_path)
+                    .arg("--version")
+                    .output()
+                    .await
+                    .ok()?;
+                // Python 3.x: version on stdout; Python 2.x: version on stderr
+                let ver_str = String::from_utf8_lossy(&out.stdout).to_string()
+                    + &String::from_utf8_lossy(&out.stderr);
+                let version = ver_str.trim().trim_start_matches("Python ").to_string();
+                if version.is_empty() { None } else { Some(("py".to_string(), version)) }
+            },
+            async {
+                if !has_go_mod { return None; }
+                let out = tokio::process::Command::new("go")
+                    .arg("version")
+                    .output()
+                    .await
+                    .ok()?;
+                // "go version go1.22.1 darwin/arm64" — extract "1.22.1"
+                let s = String::from_utf8_lossy(&out.stdout).to_string();
+                let ver = s.split_whitespace().nth(2)?.trim_start_matches("go").to_string();
+                if ver.is_empty() { None } else { Some(("go".to_string(), ver)) }
+            },
+            async {
+                if !has_package_json { return None; }
+                let out = tokio::process::Command::new("node")
+                    .arg("--version")
+                    .output()
+                    .await
+                    .ok()?;
+                // "v20.11.0" — trim leading 'v'
+                let v = String::from_utf8_lossy(&out.stdout)
+                    .trim()
+                    .trim_start_matches('v')
+                    .to_string();
+                if v.is_empty() { None } else { Some(("node".to_string(), v)) }
+            },
+            async {
+                if !has_cargo_toml { return None; }
+                let out = tokio::process::Command::new("rustc")
+                    .arg("--version")
+                    .output()
+                    .await
+                    .ok()?;
+                // "rustc 1.75.0 (82e1608df 2023-12-21)" — take "1.75.0"
+                let s = String::from_utf8_lossy(&out.stdout).to_string();
+                let ver = s.split_whitespace().nth(1)?.to_string();
+                if ver.is_empty() { None } else { Some(("rs".to_string(), ver)) }
+            },
+        );
+
+        for result in [py_result, go_result, node_result, rs_result].into_iter().flatten() {
+            info.dev_envs.push(result);
+        }
+
+        let _ = tx.send(Event::HeaderInfoReady(info));
+    });
+}
+
 /// Loads a directory asynchronously.
 /// Sends result as Event::DirectoryLoaded via the internal channel.
 fn schedule_directory_load(path: PathBuf, tx: &UnboundedSender<Event>) {
@@ -116,7 +227,8 @@ fn navigate_to_dir(state: &mut AppState, path: PathBuf, tx: &UnboundedSender<Eve
     state.preview_scroll = 0;
     state.needs_terminal_clear = true;
     state.sidebar_tree = build_sidebar_tree(&path);
-    schedule_directory_load(path, tx);
+    schedule_directory_load(path.clone(), tx);
+    schedule_header_info_load(&path, tx);
 }
 
 /// Syncs mode.query with state.search_query, re-filters, and schedules a preview refresh.
@@ -247,6 +359,79 @@ fn handle_action(
                 });
             }
         }
+        Action::OpenCommandInput => {
+            state.mode = app::state::AppMode::CommandInput { cmd: String::new() };
+        }
+        Action::CommandInputChar(c) => {
+            if let app::state::AppMode::CommandInput { cmd } = &mut state.mode {
+                cmd.push(*c);
+            }
+        }
+        Action::CommandInputBackspace => {
+            if let app::state::AppMode::CommandInput { cmd } = &mut state.mode {
+                cmd.pop();
+            }
+        }
+        Action::CloseCommandInput => {
+            state.mode = app::state::AppMode::Normal;
+        }
+        Action::RunCommand => {
+            let cmd = if let app::state::AppMode::CommandInput { cmd } = &state.mode {
+                cmd.clone()
+            } else {
+                String::new()
+            };
+            if !cmd.is_empty() {
+                let dir = state.current_dir.clone();
+                let tx = tx.clone();
+                state.preview_state = app::state::PreviewState::MakeOutput {
+                    output: vec![format!("$ {}", cmd)],
+                };
+                state.preview_scroll = 0;
+                state.mode = app::state::AppMode::Normal;
+                tokio::spawn(async move {
+                    use tokio::process::Command;
+                    use tokio::io::{AsyncBufReadExt, BufReader};
+                    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+                    let mut child = match Command::new(&shell)
+                        .args(["-i", "-c", &cmd])
+                        .current_dir(&dir)
+                        .stdout(std::process::Stdio::piped())
+                        .stderr(std::process::Stdio::piped())
+                        .spawn()
+                    {
+                        Ok(c) => c,
+                        Err(e) => {
+                            let _ = tx.send(Event::MakeOutputLine(format!("Error: {}", e)));
+                            let _ = tx.send(Event::MakeDone { exit_code: -1 });
+                            return;
+                        }
+                    };
+                    let stdout = child.stdout.take().expect("stdout");
+                    let stderr = child.stderr.take().expect("stderr");
+                    let mut stdout_reader = BufReader::new(stdout).lines();
+                    let mut stderr_reader = BufReader::new(stderr).lines();
+                    let tx_out = tx.clone();
+                    let tx_err = tx.clone();
+                    let stdout_task = tokio::spawn(async move {
+                        while let Ok(Some(line)) = stdout_reader.next_line().await {
+                            if tx_out.send(Event::MakeOutputLine(line)).is_err() { break; }
+                        }
+                    });
+                    let stderr_task = tokio::spawn(async move {
+                        while let Ok(Some(line)) = stderr_reader.next_line().await {
+                            if tx_err.send(Event::MakeOutputLine(format!("stderr: {}", line))).is_err() { break; }
+                        }
+                    });
+                    let status = child.wait().await.ok();
+                    let _ = tokio::join!(stdout_task, stderr_task);
+                    let code = status.and_then(|s| s.code()).unwrap_or(-1);
+                    let _ = tx.send(Event::MakeDone { exit_code: code });
+                });
+            } else {
+                state.mode = app::state::AppMode::Normal;
+            }
+        }
         Action::PreviewScrollUp => {
             state.preview_scroll = state.preview_scroll.saturating_sub(3);
         }
@@ -329,6 +514,10 @@ fn handle_event(event: Event, state: &mut AppState, tx: &UnboundedSender<Event>)
                 schedule_preview(state, tx);
             }
         }
+        Event::HeaderInfoReady(info) => {
+            state.header_info = info;
+        }
+        Event::CommandOutput { .. } => {}
     }
 }
 
@@ -365,8 +554,11 @@ async fn main() -> Result<()> {
     let mut terminal = init_terminal()?;
 
     // Load initial directory asynchronously
-    schedule_directory_load(initial_dir, &tx);
+    schedule_directory_load(initial_dir.clone(), &tx);
     state.preview_state = app::state::PreviewState::Loading;
+
+    // Load header info (git branch + dev envs) for initial directory
+    schedule_header_info_load(&initial_dir, &tx);
 
     // Setup event sources
     let mut crossterm_events = EventStream::new();

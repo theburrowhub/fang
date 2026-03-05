@@ -19,6 +19,11 @@ pub enum Action {
     PreviewScrollUp,
     PreviewScrollDown,
     FocusNext,   // Tab between panels
+    OpenCommandInput,
+    CommandInputChar(char),
+    CommandInputBackspace,
+    RunCommand,
+    CloseCommandInput,
     Noop,
 }
 
@@ -53,6 +58,7 @@ pub fn map_key_to_action(
             KeyCode::PageUp => Action::PreviewScrollUp,
             KeyCode::PageDown => Action::PreviewScrollDown,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
+            KeyCode::Char(':') => Action::OpenCommandInput,
             _ => Action::Noop,
         },
         AppMode::Search { .. } => match key.code {
@@ -72,6 +78,15 @@ pub fn map_key_to_action(
             KeyCode::Down | KeyCode::Char('j') => Action::MakeNavDown,
             KeyCode::Up | KeyCode::Char('k') => Action::MakeNavUp,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
+            _ => Action::Noop,
+        },
+        AppMode::CommandInput { .. } => match key.code {
+            KeyCode::Esc => Action::CloseCommandInput,
+            KeyCode::Enter => Action::RunCommand,
+            KeyCode::Backspace => Action::CommandInputBackspace,
+            // Ctrl+C must come before the unguarded Char(c) arm, or it is unreachable.
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
+            KeyCode::Char(c) => Action::CommandInputChar(c),
             _ => Action::Noop,
         },
     }
@@ -318,5 +333,55 @@ mod tests {
             map_key_to_action(&key(KeyCode::Char('k')), &AppMode::MakeTarget, &crate::app::state::FocusedPanel::FileList),
             Action::MakeNavUp
         ));
+    }
+
+    #[test]
+    fn test_colon_opens_command_input() {
+        let action = map_key_to_action(
+            &key(KeyCode::Char(':')),
+            &AppMode::Normal,
+            &crate::app::state::FocusedPanel::FileList,
+        );
+        assert!(matches!(action, Action::OpenCommandInput));
+    }
+
+    #[test]
+    fn test_command_input_mode_enter_runs() {
+        let mode = AppMode::CommandInput { cmd: "ls".to_string() };
+        let action = map_key_to_action(&key(KeyCode::Enter), &mode, &crate::app::state::FocusedPanel::FileList);
+        assert!(matches!(action, Action::RunCommand));
+    }
+
+    #[test]
+    fn test_command_input_mode_esc_closes() {
+        let mode = AppMode::CommandInput { cmd: "ls".to_string() };
+        let action = map_key_to_action(&key(KeyCode::Esc), &mode, &crate::app::state::FocusedPanel::FileList);
+        assert!(matches!(action, Action::CloseCommandInput));
+    }
+
+    #[test]
+    fn test_command_input_mode_char_input() {
+        let mode = AppMode::CommandInput { cmd: String::new() };
+        let action = map_key_to_action(&key(KeyCode::Char('a')), &mode, &crate::app::state::FocusedPanel::FileList);
+        assert!(matches!(action, Action::CommandInputChar('a')));
+    }
+
+    #[test]
+    fn test_command_input_mode_backspace() {
+        let mode = AppMode::CommandInput { cmd: "ls".to_string() };
+        let action = map_key_to_action(&key(KeyCode::Backspace), &mode, &crate::app::state::FocusedPanel::FileList);
+        assert!(matches!(action, Action::CommandInputBackspace));
+    }
+
+    #[test]
+    fn test_command_input_mode_ctrl_c_quit() {
+        let ctrl_c = KeyEvent {
+            code: KeyCode::Char('c'),
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        };
+        let mode = AppMode::CommandInput { cmd: String::new() };
+        assert!(matches!(map_key_to_action(&ctrl_c, &mode, &crate::app::state::FocusedPanel::FileList), Action::Quit));
     }
 }
