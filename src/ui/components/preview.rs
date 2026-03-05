@@ -5,14 +5,34 @@ use ratatui::{
 use crate::app::state::{AppState, FocusedPanel, PreviewState, StyledLine};
 use crate::ui::utils::{format_size_verbose, panel_border_style};
 
-/// Convert a StyledLine into a ratatui Line.
-fn styled_line_to_line(sl: &StyledLine) -> Line<'static> {
-    let spans: Vec<Span<'static>> = sl
+/// Convert a StyledLine into a ratatui Line, padded to `width` so every cell
+/// in the row is explicitly written (prevents old content bleeding through).
+fn styled_line_to_line_padded(sl: &StyledLine, width: usize) -> Line<'static> {
+    let mut spans: Vec<Span<'static>> = sl
         .spans
         .iter()
         .map(|(style, text)| Span::styled(text.clone(), *style))
         .collect();
+    // Measure rendered width to know how many trailing spaces to add.
+    let rendered_width: usize = sl.spans.iter().map(|(_, t)| t.chars().count()).sum();
+    if rendered_width < width {
+        spans.push(Span::raw(" ".repeat(width - rendered_width)));
+    }
     Line::from(spans)
+}
+
+/// Fill every cell in `area` with a space using default style.
+/// This guarantees stale terminal content (including syntect-coloured cells or
+/// make-modal text that Paragraph::alignment(Center) left untouched) is erased.
+fn fill_blank(frame: &mut Frame, area: Rect) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    let blank: String = " ".repeat(area.width as usize);
+    let lines: Vec<Line<'static>> = (0..area.height as usize)
+        .map(|_| Line::from(Span::raw(blank.clone())))
+        .collect();
+    frame.render_widget(Paragraph::new(lines), area);
 }
 
 /// Render a titled block with a single centered message inside it.
@@ -31,7 +51,10 @@ fn render_centered_msg(
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    // Use ratatui's built-in vertical centering by padding with empty lines
+    // Blank-fill the entire inner area first so no stale cells remain.
+    fill_blank(frame, inner);
+
+    // Then render the message centered.
     let top_pad = inner.height / 2;
     let mut lines = vec![Line::from(""); top_pad as usize];
     lines.push(Line::from(Span::styled(msg, Style::default().fg(msg_color))));
@@ -39,7 +62,7 @@ fn render_centered_msg(
     frame.render_widget(para, inner);
 }
 
-/// Render a titled block and return the inner rect for further content rendering.
+/// Render a titled block, blank-fill its inner area, and return the inner rect.
 fn render_block(
     frame: &mut Frame,
     area: Rect,
@@ -52,6 +75,8 @@ fn render_block(
         .border_style(border_style);
     let inner = block.inner(area);
     frame.render_widget(block, area);
+    // Blank-fill before any content is drawn over this rect.
+    fill_blank(frame, inner);
     inner
 }
 
@@ -94,13 +119,15 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                 .preview_scroll
                 .min(lines.len().saturating_sub(inner_height));
 
+            let inner_width = inner.width as usize;
             let visible_lines: Vec<Line<'static>> = lines
                 .iter()
                 .skip(scroll)
                 .take(inner_height)
-                .map(styled_line_to_line)
+                .map(|sl| styled_line_to_line_padded(sl, inner_width))
                 .collect();
 
+            // render_block already blank-filled inner; just draw the text on top.
             frame.render_widget(Paragraph::new(visible_lines), inner);
         }
 
