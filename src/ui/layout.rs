@@ -6,11 +6,11 @@ use super::components;
 pub fn draw(frame: &mut Frame, state: &AppState) {
     let area = frame.area();
 
-    // Reserve 1 line for header, 2 lines for footer
+    // Reserve 1 line for header, 1 line for footer (keybindings only)
     let [header_area, main_area, footer_area] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(0),
-        Constraint::Length(2),
+        Constraint::Length(1),
     ])
     .areas(area);
 

@@ -443,7 +443,8 @@ fn handle_action(
                     let status = child.wait().await.ok();
                     let _ = tokio::join!(stdout_task, stderr_task);
                     let code = status.and_then(|s| s.code()).unwrap_or(-1);
-                    let _ = tx.send(Event::MakeDone { exit_code: code });
+                    // Use CommandOutput (not MakeDone) so we don't show "make completed" message.
+                    let _ = tx.send(Event::CommandOutput { lines: vec![], exit_code: code });
                 });
             } else {
                 state.mode = app::state::AppMode::Normal;
@@ -534,7 +535,17 @@ fn handle_event(event: Event, state: &mut AppState, tx: &UnboundedSender<Event>)
         Event::HeaderInfoReady(info) => {
             state.header_info = info;
         }
-        Event::CommandOutput { .. } => {}
+        Event::CommandOutput { exit_code, .. } => {
+            // Append exit status line to the command output in the preview panel.
+            let done_line = if exit_code == 0 {
+                "\n[done]".to_string()
+            } else {
+                format!("\n[exited with code {}]", exit_code)
+            };
+            if let app::state::PreviewState::MakeOutput { output } = &mut state.preview_state {
+                output.push(done_line);
+            }
+        }
     }
 }
 
