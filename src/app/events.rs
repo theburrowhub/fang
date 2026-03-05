@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use crate::app::state::{PreviewState, FileEntry};
+use crate::app::state::{PreviewState, FileEntry, HeaderInfo};
 
 #[derive(Debug, Clone)]
 pub enum Event {
@@ -17,4 +17,6 @@ pub enum Event {
     MakeDone { exit_code: i32 },
     /// Directory loading completed (from background task)
     DirectoryLoaded { path: PathBuf, entries: Vec<FileEntry> },
+    /// Header info (git branch + dev envs) loaded for current directory
+    HeaderInfoReady(HeaderInfo),
 }

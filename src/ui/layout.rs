@@ -6,14 +6,15 @@ use super::components;
 pub fn draw(frame: &mut Frame, state: &AppState) {
     let area = frame.area();
 
-    // Reserve 2 lines for footer
-    let [main_area, footer_area] = Layout::vertical([
+    // Reserve 1 line for header, 2 lines for footer
+    let [header_area, main_area, footer_area] = Layout::vertical([
+        Constraint::Length(1),
         Constraint::Min(0),
         Constraint::Length(2),
     ])
     .areas(area);
 
-    // Render footer always
+    components::header::render(frame, header_area, state);
     components::footer::render(frame, footer_area, state);
 
     // If make modal is active, render main + modal overlay
