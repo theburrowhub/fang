@@ -1,4 +1,6 @@
 use anyhow::Result;
+#[cfg(unix)]
+extern crate libc;
 use crossterm::{
     event::{EventStream, Event as CrosstermEvent},
     execute,
@@ -392,18 +394,29 @@ fn handle_action(
                 tokio::spawn(async move {
                     use tokio::process::Command;
                     use tokio::io::{AsyncBufReadExt, BufReader};
+                    use std::os::unix::process::CommandExt;
+
                     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
-                    let mut child = match Command::new(&shell)
+                    let mut cmd_builder = Command::new(&shell);
+                    cmd_builder
                         .args(["-i", "-c", &cmd])
                         .current_dir(&dir)
-                        // stdin must be null: -i (interactive) shells try to read from the TTY
-                        // and issue tcsetpgrp(), which sends SIGTTOU to fang and suspends it.
-                        // With stdin=null the shell has no TTY to fight over.
                         .stdin(std::process::Stdio::null())
                         .stdout(std::process::Stdio::piped())
-                        .stderr(std::process::Stdio::piped())
-                        .spawn()
-                    {
+                        .stderr(std::process::Stdio::piped());
+
+                    // setsid() in the child process creates a new session with no controlling
+                    // terminal. This prevents the interactive shell from calling tcsetpgrp()
+                    // against fang's terminal (even via /dev/tty), which would send SIGTTIN
+                    // to fang and suspend it.
+                    unsafe {
+                        cmd_builder.pre_exec(|| {
+                            libc::setsid();
+                            Ok(())
+                        });
+                    }
+
+                    let mut child = match cmd_builder.spawn() {
                         Ok(c) => c,
                         Err(e) => {
                             let _ = tx.send(Event::MakeOutputLine(format!("Error: {}", e)));
