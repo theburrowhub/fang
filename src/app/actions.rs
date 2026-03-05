@@ -1,0 +1,23 @@
+#[derive(Debug, Clone)]
+pub enum Action {
+    Quit,
+    NavUp,
+    NavDown,
+    NavLeft,
+    NavRight,
+    ToggleSidebar,
+    TogglePreview,
+    OpenSearch,
+    SearchInput(char),
+    SearchBackspace,
+    CloseSearch,
+    OpenMakeModal,
+    CloseMakeModal,
+    MakeNavUp,
+    MakeNavDown,
+    RunMakeTarget,
+    PreviewScrollUp,
+    PreviewScrollDown,
+    FocusNext,
+    Noop,
+}
