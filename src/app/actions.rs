@@ -29,6 +29,12 @@ pub enum Action {
     ExternalCommandBackspace,
     RunExternalCommand,
     CloseExternalCommand,
+    OpenNewFile,
+    OpenNewFileFromClipboard,
+    NewFileChar(char),
+    NewFileBackspace,
+    CreateNewFile,
+    CloseNewFile,
     Noop,
 }
 
@@ -65,6 +71,8 @@ pub fn map_key_to_action(
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
             KeyCode::Char(':') => Action::OpenCommandInput,
             KeyCode::Char(';') => Action::OpenExternalCommand,
+            KeyCode::Char('n') => Action::OpenNewFile,
+            KeyCode::Char('N') => Action::OpenNewFileFromClipboard,
             _ => Action::Noop,
         },
         AppMode::Search { .. } => match key.code {
@@ -100,6 +108,14 @@ pub fn map_key_to_action(
             KeyCode::Backspace => Action::ExternalCommandBackspace,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
             KeyCode::Char(c) => Action::ExternalCommandChar(c),
+            _ => Action::Noop,
+        },
+        AppMode::NewFile { .. } => match key.code {
+            KeyCode::Esc => Action::CloseNewFile,
+            KeyCode::Enter => Action::CreateNewFile,
+            KeyCode::Backspace => Action::NewFileBackspace,
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
+            KeyCode::Char(c) => Action::NewFileChar(c),
             _ => Action::Noop,
         },
     }

@@ -12,7 +12,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
 
     let line_area = Rect { x: area.x, y: area.y, width: area.width, height: 1 };
 
-    // CommandInput / ExternalCommand: show a vim-style prompt on the footer line.
+    // CommandInput / ExternalCommand / NewFile: show a vim-style prompt on the footer line.
     let prompt_line: Option<Line<'_>> = match &state.mode {
         AppMode::CommandInput { cmd } => Some(Line::from(vec![
             Span::styled(": ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
@@ -24,6 +24,18 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             Span::styled(cmd.as_str().to_owned(), Style::default().fg(Color::White)),
             Span::styled("\u{2588}", Style::default().fg(Color::Green)),
         ])),
+        AppMode::NewFile { name, from_clipboard } => {
+            let prefix = if *from_clipboard {
+                "new (clipboard): "
+            } else {
+                "new: "
+            };
+            Some(Line::from(vec![
+                Span::styled(prefix, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                Span::styled(name.as_str().to_owned(), Style::default().fg(Color::White)),
+                Span::styled("\u{2588}", Style::default().fg(Color::Green)),
+            ]))
+        }
         _ => None,
     };
     if let Some(line) = prompt_line {
@@ -45,6 +57,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             s.extend(key_hint(":", "Cmd"));
             s.extend(key_hint(";", "Split"));
             s.extend(key_hint("m", "Make"));
+            s.extend(key_hint("n", "New"));
             s.extend(key_hint("Tab", "Panel"));
             s.extend(key_hint("q", "Quit"));
             s
@@ -63,8 +76,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             s.extend(key_hint("j/k", "Navigate"));
             s
         }
-        // CommandInput / ExternalCommand handled above via early return.
-        AppMode::CommandInput { .. } | AppMode::ExternalCommand { .. } => vec![],
+        // CommandInput / ExternalCommand / NewFile handled above via early return.
+        AppMode::CommandInput { .. } | AppMode::ExternalCommand { .. } | AppMode::NewFile { .. } => vec![],
     };
 
     frame.render_widget(

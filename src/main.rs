@@ -496,6 +496,62 @@ fn handle_action(
                 state.mode = app::state::AppMode::Normal;
             }
         }
+        Action::OpenNewFile => {
+            state.mode = app::state::AppMode::NewFile {
+                name: String::new(),
+                from_clipboard: false,
+            };
+        }
+        Action::OpenNewFileFromClipboard => {
+            state.mode = app::state::AppMode::NewFile {
+                name: String::new(),
+                from_clipboard: true,
+            };
+        }
+        Action::NewFileChar(c) => {
+            if let app::state::AppMode::NewFile { name, .. } = &mut state.mode {
+                name.push(*c);
+            }
+        }
+        Action::NewFileBackspace => {
+            if let app::state::AppMode::NewFile { name, .. } = &mut state.mode {
+                name.pop();
+            }
+        }
+        Action::CloseNewFile => {
+            state.mode = app::state::AppMode::Normal;
+        }
+        Action::CreateNewFile => {
+            let (name, from_clipboard) =
+                if let app::state::AppMode::NewFile { name, from_clipboard } = &state.mode {
+                    (name.clone(), *from_clipboard)
+                } else {
+                    return;
+                };
+            state.mode = app::state::AppMode::Normal;
+            if name.is_empty() {
+                return;
+            }
+            let file_path = state.current_dir.join(&name);
+            let dir = state.current_dir.clone();
+            let tx2 = tx.clone();
+
+            tokio::spawn(async move {
+                let content: Vec<u8> = if from_clipboard {
+                    commands::clipboard::read_clipboard().unwrap_or_default()
+                } else {
+                    vec![]
+                };
+                match tokio::fs::write(&file_path, &content).await {
+                    Ok(()) => {
+                        schedule_directory_load(dir, &tx2);
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to create file: {}", e);
+                    }
+                }
+            });
+        }
         Action::PreviewScrollUp => {
             state.preview_scroll = state.preview_scroll.saturating_sub(3);
         }
