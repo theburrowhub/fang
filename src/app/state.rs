@@ -81,6 +81,8 @@ pub enum AppMode {
     Search { query: String },
     /// Make-target selection modal is open.
     MakeTarget,
+    /// Git operations modal is open.
+    GitMenu { selected: usize },
     /// Shell command input prompt (activated with `:`).
     CommandInput { cmd: String },
     /// External shell command prompt (activated with `;`).

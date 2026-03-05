@@ -45,6 +45,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             s.extend(key_hint(":", "Cmd"));
             s.extend(key_hint(";", "Split"));
             s.extend(key_hint("m", "Make"));
+            s.extend(key_hint("g", "Git"));
             s.extend(key_hint("Tab", "Panel"));
             s.extend(key_hint("q", "Quit"));
             s
@@ -57,6 +58,13 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             s
         }
         AppMode::MakeTarget => {
+            let mut s = Vec::new();
+            s.extend(key_hint("Enter", "Run"));
+            s.extend(key_hint("Esc", "Cancel"));
+            s.extend(key_hint("j/k", "Navigate"));
+            s
+        }
+        AppMode::GitMenu { .. } => {
             let mut s = Vec::new();
             s.extend(key_hint("Enter", "Run"));
             s.extend(key_hint("Esc", "Cancel"));

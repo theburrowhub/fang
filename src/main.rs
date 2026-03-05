@@ -361,6 +361,45 @@ fn handle_action(
                 });
             }
         }
+        Action::OpenGitMenu => {
+            state.mode = app::state::AppMode::GitMenu { selected: 0 };
+            state.preview_state = app::state::PreviewState::None;
+        }
+        Action::CloseGitMenu => {
+            state.mode = app::state::AppMode::Normal;
+        }
+        Action::GitNavDown => {
+            if let app::state::AppMode::GitMenu { selected } = &mut state.mode {
+                if *selected < commands::git::N_GIT_OPS - 1 {
+                    *selected += 1;
+                }
+            }
+        }
+        Action::GitNavUp => {
+            if let app::state::AppMode::GitMenu { selected } = &mut state.mode {
+                if *selected > 0 {
+                    *selected -= 1;
+                }
+            }
+        }
+        Action::RunGitItem => {
+            if let app::state::AppMode::GitMenu { selected } = state.mode {
+                let ops = commands::git::git_operations();
+                if let Some(op) = ops.get(selected) {
+                    let args: Vec<&'static str> = op.args.to_vec();
+                    let dir = state.current_dir.clone();
+                    let tx = tx.clone();
+                    state.make_output.clear();
+                    state.preview_state = app::state::PreviewState::MakeOutput { output: vec![] };
+                    state.preview_scroll = 0;
+                    state.mode = app::state::AppMode::Normal;
+
+                    tokio::spawn(async move {
+                        let _ = commands::git::run_git(&args, &dir, tx).await;
+                    });
+                }
+            }
+        }
         Action::OpenCommandInput => {
             state.mode = app::state::AppMode::CommandInput { cmd: String::new() };
         }
@@ -629,6 +668,23 @@ fn handle_event(event: Event, state: &mut AppState, tx: &UnboundedSender<Event>)
             if let app::state::PreviewState::MakeOutput { output } = &mut state.preview_state {
                 output.push(done_line);
             }
+        }
+        Event::GitOutputLine(line) => {
+            if let app::state::PreviewState::MakeOutput { output } = &mut state.preview_state {
+                output.push(line.clone());
+            }
+            state.make_output.push(line);
+        }
+        Event::GitDone { exit_code } => {
+            let done_line = if exit_code == 0 {
+                "\n[done]".to_string()
+            } else {
+                format!("\n[exited with code {}]", exit_code)
+            };
+            if let app::state::PreviewState::MakeOutput { output } = &mut state.preview_state {
+                output.push(done_line.clone());
+            }
+            state.make_output.push(done_line);
         }
     }
 }

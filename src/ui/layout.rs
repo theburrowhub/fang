@@ -24,6 +24,13 @@ pub fn draw(frame: &mut Frame, state: &AppState) {
         return;
     }
 
+    // If git menu is active, render main + modal overlay
+    if matches!(state.mode, AppMode::GitMenu { .. }) {
+        render_main_panels(frame, main_area, state);
+        render_git_modal(frame, area, state);
+        return;
+    }
+
     render_main_panels(frame, main_area, state);
 }
 
@@ -89,4 +96,30 @@ fn render_make_modal(frame: &mut Frame, area: Rect, state: &AppState) {
 
     // Modal content
     components::make_modal::render(frame, modal_area, state);
+}
+
+fn render_git_modal(frame: &mut Frame, area: Rect, state: &AppState) {
+    use crate::commands::git::N_GIT_OPS;
+
+    // Each git operation renders as 2 lines (label + command), plus 6 for borders/instructions
+    let op_count = N_GIT_OPS as u16;
+    let modal_width = (area.width * 2 / 3).min(70).max(50);
+    let modal_height = op_count.saturating_mul(2).saturating_add(6)
+        .min(area.height.saturating_sub(4))
+        .max(10);
+
+    let x = (area.width.saturating_sub(modal_width)) / 2;
+    let y = (area.height.saturating_sub(modal_height)) / 2;
+    let modal_area = Rect {
+        x,
+        y,
+        width: modal_width,
+        height: modal_height,
+    };
+
+    // Clear area behind modal
+    frame.render_widget(Clear, modal_area);
+
+    // Modal content
+    components::git_modal::render(frame, modal_area, state);
 }

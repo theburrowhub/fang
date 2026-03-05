@@ -21,4 +21,8 @@ pub enum Event {
     HeaderInfoReady(HeaderInfo),
     /// Shell command completed (output streamed via MakeOutputLine; this signals completion)
     CommandOutput { lines: Vec<String>, exit_code: i32 },
+    /// Line of output from git process
+    GitOutputLine(String),
+    /// Git process completed
+    GitDone { exit_code: i32 },
 }
