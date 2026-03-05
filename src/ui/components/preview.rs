@@ -1,6 +1,6 @@
 use ratatui::{
     prelude::*,
-    widgets::{Block, Borders, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 use crate::app::state::{AppState, FocusedPanel, PreviewState, StyledLine};
 use crate::ui::utils::{format_size_verbose, panel_border_style};
@@ -56,6 +56,10 @@ fn render_block(
 }
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
+    // Guarantee a clean slate every frame — prevents stale cell artefacts when
+    // transitioning between preview states (e.g. Text → MakeOutput).
+    frame.render_widget(Clear, area);
+
     let border_style = panel_border_style(state.focused_panel == FocusedPanel::Preview);
 
     match &state.preview_state {

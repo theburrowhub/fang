@@ -22,17 +22,25 @@ pub enum Action {
     Noop,
 }
 
-/// Maps a crossterm key event to an Action based on the current app mode.
+/// Maps a crossterm key event to an Action based on the current app mode and focused panel.
 pub fn map_key_to_action(
     key: &crossterm::event::KeyEvent,
     mode: &crate::app::state::AppMode,
+    focused_panel: &crate::app::state::FocusedPanel,
 ) -> Action {
     use crossterm::event::{KeyCode, KeyModifiers};
-    use crate::app::state::AppMode;
+    use crate::app::state::{AppMode, FocusedPanel};
 
     match mode {
         AppMode::Normal => match key.code {
             KeyCode::Char('q') | KeyCode::Char('Q') => Action::Quit,
+            // When preview panel has focus, j/k/arrows scroll the content.
+            KeyCode::Char('j') | KeyCode::Down if *focused_panel == FocusedPanel::Preview => {
+                Action::PreviewScrollDown
+            }
+            KeyCode::Char('k') | KeyCode::Up if *focused_panel == FocusedPanel::Preview => {
+                Action::PreviewScrollUp
+            }
             KeyCode::Char('j') | KeyCode::Down => Action::NavDown,
             KeyCode::Char('k') | KeyCode::Up => Action::NavUp,
             KeyCode::Char('h') | KeyCode::Left | KeyCode::Backspace => Action::NavLeft,
@@ -86,26 +94,26 @@ mod tests {
 
     #[test]
     fn test_normal_mode_quit() {
-        let action = map_key_to_action(&key(KeyCode::Char('q')), &AppMode::Normal);
+        let action = map_key_to_action(&key(KeyCode::Char('q')), &AppMode::Normal, &crate::app::state::FocusedPanel::FileList);
         assert!(matches!(action, Action::Quit));
     }
 
     #[test]
     fn test_normal_mode_navigation() {
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Char('j')), &AppMode::Normal),
+            map_key_to_action(&key(KeyCode::Char('j')), &AppMode::Normal, &crate::app::state::FocusedPanel::FileList),
             Action::NavDown
         ));
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Char('k')), &AppMode::Normal),
+            map_key_to_action(&key(KeyCode::Char('k')), &AppMode::Normal, &crate::app::state::FocusedPanel::FileList),
             Action::NavUp
         ));
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Char('h')), &AppMode::Normal),
+            map_key_to_action(&key(KeyCode::Char('h')), &AppMode::Normal, &crate::app::state::FocusedPanel::FileList),
             Action::NavLeft
         ));
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Char('l')), &AppMode::Normal),
+            map_key_to_action(&key(KeyCode::Char('l')), &AppMode::Normal, &crate::app::state::FocusedPanel::FileList),
             Action::NavRight
         ));
     }
@@ -113,27 +121,27 @@ mod tests {
     #[test]
     fn test_normal_mode_arrow_keys() {
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Down), &AppMode::Normal),
+            map_key_to_action(&key(KeyCode::Down), &AppMode::Normal, &crate::app::state::FocusedPanel::FileList),
             Action::NavDown
         ));
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Up), &AppMode::Normal),
+            map_key_to_action(&key(KeyCode::Up), &AppMode::Normal, &crate::app::state::FocusedPanel::FileList),
             Action::NavUp
         ));
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Left), &AppMode::Normal),
+            map_key_to_action(&key(KeyCode::Left), &AppMode::Normal, &crate::app::state::FocusedPanel::FileList),
             Action::NavLeft
         ));
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Right), &AppMode::Normal),
+            map_key_to_action(&key(KeyCode::Right), &AppMode::Normal, &crate::app::state::FocusedPanel::FileList),
             Action::NavRight
         ));
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Enter), &AppMode::Normal),
+            map_key_to_action(&key(KeyCode::Enter), &AppMode::Normal, &crate::app::state::FocusedPanel::FileList),
             Action::NavRight
         ));
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Backspace), &AppMode::Normal),
+            map_key_to_action(&key(KeyCode::Backspace), &AppMode::Normal, &crate::app::state::FocusedPanel::FileList),
             Action::NavLeft
         ));
     }
@@ -141,15 +149,15 @@ mod tests {
     #[test]
     fn test_normal_mode_toggles() {
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Char('s')), &AppMode::Normal),
+            map_key_to_action(&key(KeyCode::Char('s')), &AppMode::Normal, &crate::app::state::FocusedPanel::FileList),
             Action::ToggleSidebar
         ));
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Char('p')), &AppMode::Normal),
+            map_key_to_action(&key(KeyCode::Char('p')), &AppMode::Normal, &crate::app::state::FocusedPanel::FileList),
             Action::TogglePreview
         ));
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Tab), &AppMode::Normal),
+            map_key_to_action(&key(KeyCode::Tab), &AppMode::Normal, &crate::app::state::FocusedPanel::FileList),
             Action::FocusNext
         ));
     }
@@ -157,7 +165,7 @@ mod tests {
     #[test]
     fn test_normal_mode_search() {
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Char('/')), &AppMode::Normal),
+            map_key_to_action(&key(KeyCode::Char('/')), &AppMode::Normal, &crate::app::state::FocusedPanel::FileList),
             Action::OpenSearch
         ));
     }
@@ -165,11 +173,11 @@ mod tests {
     #[test]
     fn test_normal_mode_make() {
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Char('m')), &AppMode::Normal),
+            map_key_to_action(&key(KeyCode::Char('m')), &AppMode::Normal, &crate::app::state::FocusedPanel::FileList),
             Action::OpenMakeModal
         ));
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Char('M')), &AppMode::Normal),
+            map_key_to_action(&key(KeyCode::Char('M')), &AppMode::Normal, &crate::app::state::FocusedPanel::FileList),
             Action::OpenMakeModal
         ));
     }
@@ -177,11 +185,11 @@ mod tests {
     #[test]
     fn test_normal_mode_preview_scroll() {
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::PageUp), &AppMode::Normal),
+            map_key_to_action(&key(KeyCode::PageUp), &AppMode::Normal, &crate::app::state::FocusedPanel::FileList),
             Action::PreviewScrollUp
         ));
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::PageDown), &AppMode::Normal),
+            map_key_to_action(&key(KeyCode::PageDown), &AppMode::Normal, &crate::app::state::FocusedPanel::FileList),
             Action::PreviewScrollDown
         ));
     }
@@ -195,7 +203,7 @@ mod tests {
             state: KeyEventState::NONE,
         };
         assert!(matches!(
-            map_key_to_action(&ctrl_c, &AppMode::Normal),
+            map_key_to_action(&ctrl_c, &AppMode::Normal, &crate::app::state::FocusedPanel::FileList),
             Action::Quit
         ));
     }
@@ -203,11 +211,11 @@ mod tests {
     #[test]
     fn test_normal_mode_noop() {
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Char('z')), &AppMode::Normal),
+            map_key_to_action(&key(KeyCode::Char('z')), &AppMode::Normal, &crate::app::state::FocusedPanel::FileList),
             Action::Noop
         ));
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::F(1)), &AppMode::Normal),
+            map_key_to_action(&key(KeyCode::F(1)), &AppMode::Normal, &crate::app::state::FocusedPanel::FileList),
             Action::Noop
         ));
     }
@@ -215,28 +223,28 @@ mod tests {
     #[test]
     fn test_search_mode_esc() {
         let mode = AppMode::Search { query: "test".to_string() };
-        let action = map_key_to_action(&key(KeyCode::Esc), &mode);
+        let action = map_key_to_action(&key(KeyCode::Esc), &mode, &crate::app::state::FocusedPanel::FileList);
         assert!(matches!(action, Action::CloseSearch));
     }
 
     #[test]
     fn test_search_mode_char_input() {
         let mode = AppMode::Search { query: String::new() };
-        let action = map_key_to_action(&key(KeyCode::Char('a')), &mode);
+        let action = map_key_to_action(&key(KeyCode::Char('a')), &mode, &crate::app::state::FocusedPanel::FileList);
         assert!(matches!(action, Action::SearchInput('a')));
     }
 
     #[test]
     fn test_search_mode_backspace() {
         let mode = AppMode::Search { query: "abc".to_string() };
-        let action = map_key_to_action(&key(KeyCode::Backspace), &mode);
+        let action = map_key_to_action(&key(KeyCode::Backspace), &mode, &crate::app::state::FocusedPanel::FileList);
         assert!(matches!(action, Action::SearchBackspace));
     }
 
     #[test]
     fn test_search_mode_enter() {
         let mode = AppMode::Search { query: "foo".to_string() };
-        let action = map_key_to_action(&key(KeyCode::Enter), &mode);
+        let action = map_key_to_action(&key(KeyCode::Enter), &mode, &crate::app::state::FocusedPanel::FileList);
         assert!(matches!(action, Action::NavRight));
     }
 
@@ -250,64 +258,64 @@ mod tests {
             state: KeyEventState::NONE,
         };
         let mode = AppMode::Search { query: String::new() };
-        assert!(matches!(map_key_to_action(&ctrl_c, &mode), Action::Quit));
+        assert!(matches!(map_key_to_action(&ctrl_c, &mode, &crate::app::state::FocusedPanel::FileList), Action::Quit));
     }
 
     #[test]
     fn test_search_mode_navigation() {
         let mode = AppMode::Search { query: String::new() };
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Down), &mode),
+            map_key_to_action(&key(KeyCode::Down), &mode, &crate::app::state::FocusedPanel::FileList),
             Action::NavDown
         ));
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Up), &mode),
+            map_key_to_action(&key(KeyCode::Up), &mode, &crate::app::state::FocusedPanel::FileList),
             Action::NavUp
         ));
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Char('j')), &mode),
+            map_key_to_action(&key(KeyCode::Char('j')), &mode, &crate::app::state::FocusedPanel::FileList),
             Action::NavDown
         ));
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Char('k')), &mode),
+            map_key_to_action(&key(KeyCode::Char('k')), &mode, &crate::app::state::FocusedPanel::FileList),
             Action::NavUp
         ));
     }
 
     #[test]
     fn test_make_mode_enter() {
-        let action = map_key_to_action(&key(KeyCode::Enter), &AppMode::MakeTarget);
+        let action = map_key_to_action(&key(KeyCode::Enter), &AppMode::MakeTarget, &crate::app::state::FocusedPanel::FileList);
         assert!(matches!(action, Action::RunMakeTarget));
     }
 
     #[test]
     fn test_make_mode_esc() {
-        let action = map_key_to_action(&key(KeyCode::Esc), &AppMode::MakeTarget);
+        let action = map_key_to_action(&key(KeyCode::Esc), &AppMode::MakeTarget, &crate::app::state::FocusedPanel::FileList);
         assert!(matches!(action, Action::CloseMakeModal));
     }
 
     #[test]
     fn test_make_mode_q_closes() {
-        let action = map_key_to_action(&key(KeyCode::Char('q')), &AppMode::MakeTarget);
+        let action = map_key_to_action(&key(KeyCode::Char('q')), &AppMode::MakeTarget, &crate::app::state::FocusedPanel::FileList);
         assert!(matches!(action, Action::CloseMakeModal));
     }
 
     #[test]
     fn test_make_mode_navigation() {
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Down), &AppMode::MakeTarget),
+            map_key_to_action(&key(KeyCode::Down), &AppMode::MakeTarget, &crate::app::state::FocusedPanel::FileList),
             Action::MakeNavDown
         ));
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Up), &AppMode::MakeTarget),
+            map_key_to_action(&key(KeyCode::Up), &AppMode::MakeTarget, &crate::app::state::FocusedPanel::FileList),
             Action::MakeNavUp
         ));
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Char('j')), &AppMode::MakeTarget),
+            map_key_to_action(&key(KeyCode::Char('j')), &AppMode::MakeTarget, &crate::app::state::FocusedPanel::FileList),
             Action::MakeNavDown
         ));
         assert!(matches!(
-            map_key_to_action(&key(KeyCode::Char('k')), &AppMode::MakeTarget),
+            map_key_to_action(&key(KeyCode::Char('k')), &AppMode::MakeTarget, &crate::app::state::FocusedPanel::FileList),
             Action::MakeNavUp
         ));
     }

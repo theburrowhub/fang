@@ -117,6 +117,30 @@ fn is_valid_target_name(name: &str) -> bool {
 ///
 /// Streams stdout y stderr como Event::MakeOutputLine.
 /// Al terminar, envía Event::MakeDone { exit_code }.
+/// Resolve the `make` binary, trying the PATH first, then common system locations.
+fn find_make_binary() -> Option<std::path::PathBuf> {
+    // Fast path: let the OS resolve via PATH
+    if std::process::Command::new("make").arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status().is_ok()
+    {
+        return Some(std::path::PathBuf::from("make"));
+    }
+    // Fallback: common installation locations (macOS, Linux)
+    for path in &[
+        "/usr/bin/make",
+        "/usr/local/bin/make",
+        "/opt/homebrew/bin/make",
+        "/usr/gnu/bin/make",
+    ] {
+        if std::path::Path::new(path).exists() {
+            return Some(std::path::PathBuf::from(path));
+        }
+    }
+    None
+}
+
 pub async fn run_target(
     target: &str,
     dir: &Path,
@@ -124,7 +148,24 @@ pub async fn run_target(
 ) -> Result<()> {
     use tokio::process::Command;
 
-    let mut child = match Command::new("make")
+    let make_bin = match find_make_binary() {
+        Some(p) => p,
+        None => {
+            let _ = tx.send(Event::MakeOutputLine(
+                "Error: 'make' not found in PATH or common locations.".to_string(),
+            ));
+            let _ = tx.send(Event::MakeOutputLine(
+                "  macOS: run `xcode-select --install` to install make.".to_string(),
+            ));
+            let _ = tx.send(Event::MakeOutputLine(
+                "  Linux: run `sudo apt install make` or equivalent.".to_string(),
+            ));
+            let _ = tx.send(Event::MakeDone { exit_code: -1 });
+            return Ok(());
+        }
+    };
+
+    let mut child = match Command::new(&make_bin)
         .arg(target)
         .current_dir(dir)
         .stdout(std::process::Stdio::piped())
@@ -133,7 +174,9 @@ pub async fn run_target(
     {
         Ok(child) => child,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            let _ = tx.send(Event::MakeOutputLine("Error: 'make' command not found".to_string()));
+            let _ = tx.send(Event::MakeOutputLine(
+                "Error: 'make' command not found".to_string(),
+            ));
             let _ = tx.send(Event::MakeDone { exit_code: -1 });
             return Ok(());
         }

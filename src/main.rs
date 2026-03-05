@@ -230,6 +230,7 @@ fn handle_action(
                 let tx = tx.clone();
                 state.make_output.clear();
                 state.preview_state = app::state::PreviewState::MakeOutput { output: vec![] };
+                state.preview_scroll = 0;
                 state.mode = app::state::AppMode::Normal;
 
                 tokio::spawn(async move {
@@ -272,7 +273,7 @@ fn handle_action(
 fn handle_event(event: Event, state: &mut AppState, tx: &UnboundedSender<Event>) {
     match event {
         Event::Key(key_event) => {
-            let action = map_key_to_action(&key_event, &state.mode);
+            let action = map_key_to_action(&key_event, &state.mode, &state.focused_panel);
             handle_action(&action, state, tx);
         }
         Event::Resize(_, _) => {
