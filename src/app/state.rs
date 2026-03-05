@@ -113,6 +113,15 @@ impl AppState {
         }
     }
 
+    /// Returns the number of visible entries without allocating a Vec.
+    pub fn visible_count(&self) -> usize {
+        if self.search_query.is_empty() {
+            self.entries.len()
+        } else {
+            self.filtered_indices.len()
+        }
+    }
+
     pub fn selected_entry(&self) -> Option<&FileEntry> {
         if self.search_query.is_empty() {
             self.entries.get(self.selected_index)
