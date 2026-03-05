@@ -8,8 +8,14 @@ use crate::ui::utils::panel_border_style;
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let border_style = panel_border_style(state.focused_panel == FocusedPanel::Sidebar);
 
+    let dir_name = state.current_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("/");
+    let title = format!(" {} ", dir_name);
+
     let block = Block::default()
-        .title(Span::styled(" Tree ", Style::default().fg(Color::White)))
+        .title(Span::styled(title, Style::default().fg(Color::White)))
         .borders(Borders::ALL)
         .border_style(border_style);
 
@@ -34,7 +40,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                         .path
                         .file_name()
                         .and_then(|n: &std::ffi::OsStr| n.to_str())
-                        .unwrap_or("?");
+                        .unwrap_or("/");
 
                     let base_style = if node.is_dir {
                         Style::default()
