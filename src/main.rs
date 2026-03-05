@@ -377,6 +377,39 @@ fn handle_action(
         Action::CloseCommandInput => {
             state.mode = app::state::AppMode::Normal;
         }
+        Action::OpenExternalCommand => {
+            state.mode = app::state::AppMode::ExternalCommand { cmd: String::new() };
+        }
+        Action::ExternalCommandChar(c) => {
+            if let app::state::AppMode::ExternalCommand { cmd } = &mut state.mode {
+                cmd.push(*c);
+            }
+        }
+        Action::ExternalCommandBackspace => {
+            if let app::state::AppMode::ExternalCommand { cmd } = &mut state.mode {
+                cmd.pop();
+            }
+        }
+        Action::CloseExternalCommand => {
+            state.mode = app::state::AppMode::Normal;
+        }
+        Action::RunExternalCommand => {
+            let cmd = if let app::state::AppMode::ExternalCommand { cmd } = &state.mode {
+                cmd.clone()
+            } else {
+                String::new()
+            };
+            state.mode = app::state::AppMode::Normal;
+            if !cmd.is_empty() {
+                let cwd = state.current_dir.clone();
+                match commands::shell::open_in_split(&cmd, &cwd) {
+                    Ok(()) => {}
+                    Err(e) => {
+                        state.status_message = Some(format!("Split error: {}", e));
+                    }
+                }
+            }
+        }
         Action::RunCommand => {
             let cmd = if let app::state::AppMode::CommandInput { cmd } = &state.mode {
                 cmd.clone()

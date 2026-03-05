@@ -12,15 +12,23 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
 
     let line_area = Rect { x: area.x, y: area.y, width: area.width, height: 1 };
 
-    // CommandInput: show the vim-style command prompt on the single footer line.
-    if let AppMode::CommandInput { cmd } = &state.mode {
-        let cmd_line = Line::from(vec![
+    // CommandInput / ExternalCommand: show a vim-style prompt on the footer line.
+    let prompt_line: Option<Line<'_>> = match &state.mode {
+        AppMode::CommandInput { cmd } => Some(Line::from(vec![
             Span::styled(": ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
             Span::styled(cmd.as_str().to_owned(), Style::default().fg(Color::White)),
             Span::styled("\u{2588}", Style::default().fg(Color::Cyan)),
-        ]);
+        ])),
+        AppMode::ExternalCommand { cmd } => Some(Line::from(vec![
+            Span::styled("; ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::styled(cmd.as_str().to_owned(), Style::default().fg(Color::White)),
+            Span::styled("\u{2588}", Style::default().fg(Color::Green)),
+        ])),
+        _ => None,
+    };
+    if let Some(line) = prompt_line {
         frame.render_widget(
-            Paragraph::new(cmd_line).style(Style::default().bg(Color::Reset)),
+            Paragraph::new(line).style(Style::default().bg(Color::Reset)),
             line_area,
         );
         return;
@@ -35,6 +43,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             s.extend(key_hint("l", "Enter"));
             s.extend(key_hint("/", "Search"));
             s.extend(key_hint(":", "Cmd"));
+            s.extend(key_hint(";", "Split"));
             s.extend(key_hint("m", "Make"));
             s.extend(key_hint("Tab", "Panel"));
             s.extend(key_hint("q", "Quit"));
@@ -54,9 +63,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             s.extend(key_hint("j/k", "Navigate"));
             s
         }
-        // CommandInput is handled above via early return; this arm is unreachable but required
-        // by the exhaustiveness checker.
-        AppMode::CommandInput { .. } => vec![],
+        // CommandInput / ExternalCommand handled above via early return.
+        AppMode::CommandInput { .. } | AppMode::ExternalCommand { .. } => vec![],
     };
 
     frame.render_widget(

@@ -24,6 +24,11 @@ pub enum Action {
     CommandInputBackspace,
     RunCommand,
     CloseCommandInput,
+    OpenExternalCommand,
+    ExternalCommandChar(char),
+    ExternalCommandBackspace,
+    RunExternalCommand,
+    CloseExternalCommand,
     Noop,
 }
 
@@ -59,6 +64,7 @@ pub fn map_key_to_action(
             KeyCode::PageDown => Action::PreviewScrollDown,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
             KeyCode::Char(':') => Action::OpenCommandInput,
+            KeyCode::Char(';') => Action::OpenExternalCommand,
             _ => Action::Noop,
         },
         AppMode::Search { .. } => match key.code {
@@ -84,9 +90,16 @@ pub fn map_key_to_action(
             KeyCode::Esc => Action::CloseCommandInput,
             KeyCode::Enter => Action::RunCommand,
             KeyCode::Backspace => Action::CommandInputBackspace,
-            // Ctrl+C must come before the unguarded Char(c) arm, or it is unreachable.
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
             KeyCode::Char(c) => Action::CommandInputChar(c),
+            _ => Action::Noop,
+        },
+        AppMode::ExternalCommand { .. } => match key.code {
+            KeyCode::Esc => Action::CloseExternalCommand,
+            KeyCode::Enter => Action::RunExternalCommand,
+            KeyCode::Backspace => Action::ExternalCommandBackspace,
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
+            KeyCode::Char(c) => Action::ExternalCommandChar(c),
             _ => Action::Noop,
         },
     }

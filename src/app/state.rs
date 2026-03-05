@@ -83,6 +83,9 @@ pub enum AppMode {
     MakeTarget,
     /// Shell command input prompt (activated with `:`).
     CommandInput { cmd: String },
+    /// External shell command prompt (activated with `;`).
+    /// Runs the command in a new terminal split/pane.
+    ExternalCommand { cmd: String },
 }
 
 // ─── FocusedPanel ─────────────────────────────────────────────────────────────
