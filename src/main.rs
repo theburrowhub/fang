@@ -396,6 +396,10 @@ fn handle_action(
                     let mut child = match Command::new(&shell)
                         .args(["-i", "-c", &cmd])
                         .current_dir(&dir)
+                        // stdin must be null: -i (interactive) shells try to read from the TTY
+                        // and issue tcsetpgrp(), which sends SIGTTOU to fang and suspends it.
+                        // With stdin=null the shell has no TTY to fight over.
+                        .stdin(std::process::Stdio::null())
                         .stdout(std::process::Stdio::piped())
                         .stderr(std::process::Stdio::piped())
                         .spawn()

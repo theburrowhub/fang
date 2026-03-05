@@ -74,18 +74,12 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         line1_area,
     );
 
-    // Line 2: current path + optional status message.
-    // Use Cow from to_string_lossy directly — avoids an extra heap allocation.
-    let path_cow = state.current_dir.to_string_lossy();
-    let mut line2_spans: Vec<Span<'_>> = vec![
-        Span::styled(path_cow.as_ref().to_owned(), Style::default().fg(Color::DarkGray)),
-    ];
-
-    if let Some(msg) = &state.status_message {
-        line2_spans.push(Span::raw("  "));
-        line2_spans.push(Span::styled("\u{2502} ", Style::default().fg(Color::DarkGray)));
-        line2_spans.push(Span::styled(msg.as_str().to_owned(), Style::default().fg(Color::Yellow)));
-    }
+    // Line 2: status message only (path is now shown in the header bar).
+    let line2_spans: Vec<Span<'_>> = if let Some(msg) = &state.status_message {
+        vec![Span::styled(msg.as_str().to_owned(), Style::default().fg(Color::Yellow))]
+    } else {
+        vec![]
+    };
 
     frame.render_widget(Paragraph::new(Line::from(line2_spans)), line2_area);
 }
