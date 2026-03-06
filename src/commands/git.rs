@@ -268,7 +268,109 @@ static TAG_PARAMS: &[GitParamDef] = &[
     },
 ];
 
-// ── New: fetch / pull / push / stash forms ───────────────────────────────────
+// ── Log / diff / branch forms ────────────────────────────────────────────────
+
+static LOG_PARAMS: &[GitParamDef] = &[
+    GitParamDef {
+        label: "Limit (number of commits)",
+        kind: GitParamKind::Text {
+            placeholder: "20",
+            flag: Some("-n"),
+        },
+    },
+    GitParamDef {
+        label: "One line per commit (--oneline)",
+        kind: GitParamKind::Bool {
+            flag: "--oneline",
+            default: true,
+        },
+    },
+    GitParamDef {
+        label: "Show branch graph (--graph)",
+        kind: GitParamKind::Bool {
+            flag: "--graph",
+            default: false,
+        },
+    },
+    GitParamDef {
+        label: "All branches (--all)",
+        kind: GitParamKind::Bool {
+            flag: "--all",
+            default: false,
+        },
+    },
+];
+
+static DIFF_PARAMS: &[GitParamDef] = &[
+    GitParamDef {
+        label: "Path or branch (empty = working tree)",
+        kind: GitParamKind::Text {
+            placeholder: "",
+            flag: None,
+        },
+    },
+    GitParamDef {
+        label: "Summary only (--stat)",
+        kind: GitParamKind::Bool {
+            flag: "--stat",
+            default: true,
+        },
+    },
+    GitParamDef {
+        label: "Staged / cached changes (--staged)",
+        kind: GitParamKind::Bool {
+            flag: "--staged",
+            default: false,
+        },
+    },
+    GitParamDef {
+        label: "Word-level diff (--word-diff)",
+        kind: GitParamKind::Bool {
+            flag: "--word-diff",
+            default: false,
+        },
+    },
+];
+
+static BRANCH_PARAMS: &[GitParamDef] = &[
+    GitParamDef {
+        label: "Filter (name contains)",
+        kind: GitParamKind::Text {
+            placeholder: "",
+            flag: None,
+        },
+    },
+    GitParamDef {
+        label: "Show all (local + remote) (-a)",
+        kind: GitParamKind::Bool {
+            flag: "-a",
+            default: true,
+        },
+    },
+    GitParamDef {
+        label: "Remote branches only (-r)",
+        kind: GitParamKind::Bool {
+            flag: "-r",
+            default: false,
+        },
+    },
+    GitParamDef {
+        label: "Show merged branches (--merged)",
+        kind: GitParamKind::Bool {
+            flag: "--merged",
+            default: false,
+        },
+    },
+    GitParamDef {
+        label: "Verbose — show last commit (-v)",
+        kind: GitParamKind::Bool {
+            flag: "-v",
+            default: false,
+        },
+    },
+];
+
+// ── Fetch / pull / push / stash forms ────────────────────────────────────────
 
 static FETCH_PARAMS: &[GitParamDef] = &[
     GitParamDef {
@@ -388,26 +490,26 @@ static STASH_PARAMS: &[GitParamDef] = &[
 /// Operations with `params` open the form (second screen).
 pub fn git_operations() -> Vec<GitOperation> {
     vec![
-        // ── Inspect ───────────────────────────────────────────────────────
+        // ── Inspect (Status = direct; Log/Diff/Branch = forms) ──────────
         GitOperation {
             label: "Status",
             base_args: &["status"],
             params: &[],
         },
         GitOperation {
-            label: "Log (last 20)",
-            base_args: &["log", "--oneline", "-20"],
-            params: &[],
+            label: "Log…",
+            base_args: &["log"],
+            params: LOG_PARAMS,
         },
         GitOperation {
-            label: "Diff (stat)",
-            base_args: &["diff", "--stat"],
-            params: &[],
+            label: "Diff…",
+            base_args: &["diff"],
+            params: DIFF_PARAMS,
         },
         GitOperation {
-            label: "List branches",
-            base_args: &["branch", "-a"],
-            params: &[],
+            label: "Branches…",
+            base_args: &["branch"],
+            params: BRANCH_PARAMS,
         },
         // ── Fetch / pull / push — all through forms ───────────────────────
         GitOperation {
@@ -578,7 +680,7 @@ mod tests {
     fn test_direct_ops_have_no_params() {
         let ops = git_operations();
         assert!(!ops[0].has_form()); // status
-        assert!(!ops[3].has_form()); // list branches
+        assert!(!ops[8].has_form()); // stash pop
     }
 
     #[test]
