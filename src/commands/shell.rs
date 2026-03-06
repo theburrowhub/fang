@@ -21,10 +21,18 @@ pub fn open_in_split(cmd: &str, cwd: &Path) -> Result<(), String> {
     // "right" = add a new pane to the RIGHT → vertical divider, side by side.
     if std::env::var("ZELLIJ").is_ok() || std::env::var("ZELLIJ_SESSION_NAME").is_ok() {
         return fire(&[
-            "zellij", "action", "new-pane",
-            "--direction", "right",
-            "--cwd", cwd_str,
-            "--", &shell, "-i", "-c", cmd,
+            "zellij",
+            "action",
+            "new-pane",
+            "--direction",
+            "right",
+            "--cwd",
+            cwd_str,
+            "--",
+            &shell,
+            "-i",
+            "-c",
+            cmd,
         ]);
     }
 
@@ -32,11 +40,7 @@ pub fn open_in_split(cmd: &str, cwd: &Path) -> Result<(), String> {
     // In tmux: -h (horizontal flag) = split into left/right panes (vertical divider).
     // This is tmux's confusing naming: "-h" means the panes sit side by side.
     if std::env::var("TMUX").is_ok() {
-        return fire(&[
-            "tmux", "split-window", "-h",
-            "-c", cwd_str,
-            &shell_cmd,
-        ]);
+        return fire(&["tmux", "split-window", "-h", "-c", cwd_str, &shell_cmd]);
     }
 
     // ── 3. Kitty ──────────────────────────────────────────────────────────────
@@ -44,27 +48,40 @@ pub fn open_in_split(cmd: &str, cwd: &Path) -> Result<(), String> {
     // Requires: `allow_remote_control yes` in kitty.conf (or --listen-on at launch).
     if std::env::var("KITTY_WINDOW_ID").is_ok() {
         return fire(&[
-            "kitty", "@", "launch",
-            "--type=hsplit",               // vertical divider, panes side by side
+            "kitty",
+            "@",
+            "launch",
+            "--type=hsplit", // vertical divider, panes side by side
             &format!("--cwd={}", cwd_str),
-            "--hold",                      // keep pane open after command exits
-            &shell, "-i", "-c", cmd,
+            "--hold", // keep pane open after command exits
+            &shell,
+            "-i",
+            "-c",
+            cmd,
         ])
-        .map_err(|e| format!(
-            "{}\nHint: add 'allow_remote_control yes' to ~/.config/kitty/kitty.conf", e
-        ));
+        .map_err(|e| {
+            format!(
+                "{}\nHint: add 'allow_remote_control yes' to ~/.config/kitty/kitty.conf",
+                e
+            )
+        });
     }
 
     // ── 4. WezTerm ────────────────────────────────────────────────────────────
     // --horizontal = adds a vertical dividing line → panes are left | right.
-    if std::env::var("WEZTERM_UNIX_SOCKET").is_ok()
-        || std::env::var("WEZTERM_PANE").is_ok()
-    {
+    if std::env::var("WEZTERM_UNIX_SOCKET").is_ok() || std::env::var("WEZTERM_PANE").is_ok() {
         return fire(&[
-            "wezterm", "cli", "split-pane",
-            "--horizontal",                // = vertical divider (WezTerm naming)
-            "--cwd", cwd_str,
-            "--", &shell, "-i", "-c", cmd,
+            "wezterm",
+            "cli",
+            "split-pane",
+            "--horizontal", // = vertical divider (WezTerm naming)
+            "--cwd",
+            cwd_str,
+            "--",
+            &shell,
+            "-i",
+            "-c",
+            cmd,
         ]);
     }
 
@@ -74,14 +91,15 @@ pub fn open_in_split(cmd: &str, cwd: &Path) -> Result<(), String> {
     {
         // Try the IPC approach first, fall back to new window
         return fire(&[
-            "ghostty", "action", "new-split",
-            "--direction", "right",
-            "--command", &shell_cmd,
+            "ghostty",
+            "action",
+            "new-split",
+            "--direction",
+            "right",
+            "--command",
+            &shell_cmd,
         ])
-        .or_else(|_| fire(&[
-            "ghostty", "action", "new-window",
-            "--command", &shell_cmd,
-        ]));
+        .or_else(|_| fire(&["ghostty", "action", "new-window", "--command", &shell_cmd]));
     }
 
     // ── 6. iTerm2 (macOS) ────────────────────────────────────────────────────
@@ -110,7 +128,10 @@ pub fn open_in_split(cmd: &str, cwd: &Path) -> Result<(), String> {
 
     // ── 7. macOS Terminal.app ─────────────────────────────────────────────────
     // Terminal.app has no split API; open a new window running the command.
-    if matches!(std::env::var("TERM_PROGRAM").as_deref(), Ok("Apple_Terminal")) {
+    if matches!(
+        std::env::var("TERM_PROGRAM").as_deref(),
+        Ok("Apple_Terminal")
+    ) {
         let escaped_cmd = cmd.replace('\\', "\\\\").replace('"', "\\\"");
         let escaped_cwd = cwd_str.replace('\\', "\\\\").replace('"', "\\\"");
         let script = format!(
@@ -127,26 +148,54 @@ pub fn open_in_split(cmd: &str, cwd: &Path) -> Result<(), String> {
     // ── 8. Linux: try common terminal emulators ───────────────────────────────
     if command_exists("gnome-terminal") {
         return fire(&[
-            "gnome-terminal", "--working-directory", cwd_str,
-            "--", &shell, "-i", "-c", &format!("{}; exec {}", cmd, shell),
+            "gnome-terminal",
+            "--working-directory",
+            cwd_str,
+            "--",
+            &shell,
+            "-i",
+            "-c",
+            &format!("{}; exec {}", cmd, shell),
         ]);
     }
     if command_exists("konsole") {
-        return fire(&["konsole", "--workdir", cwd_str, "-e", &shell, "-i", "-c", cmd]);
+        return fire(&[
+            "konsole",
+            "--workdir",
+            cwd_str,
+            "-e",
+            &shell,
+            "-i",
+            "-c",
+            cmd,
+        ]);
     }
     if command_exists("foot") {
-        return fire(&["foot", "--working-directory", cwd_str, &shell, "-i", "-c", cmd]);
+        return fire(&[
+            "foot",
+            "--working-directory",
+            cwd_str,
+            &shell,
+            "-i",
+            "-c",
+            cmd,
+        ]);
     }
     if command_exists("xterm") {
         return fire(&[
-            "xterm", "-e", &shell, "-i", "-c",
+            "xterm",
+            "-e",
+            &shell,
+            "-i",
+            "-c",
             &format!("cd {} && {}; read -p 'Press Enter...'", cwd_str, cmd),
         ]);
     }
 
     Err("No supported terminal emulator or multiplexer detected.\n\
          Supported: zellij, tmux, kitty (allow_remote_control yes), \
-         wezterm, ghostty, iTerm2, Terminal.app, gnome-terminal, konsole, foot, xterm.".to_string())
+         wezterm, ghostty, iTerm2, Terminal.app, gnome-terminal, konsole, foot, xterm."
+        .to_string())
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

@@ -1,13 +1,13 @@
-use std::path::{Path, PathBuf};
-use anyhow::{Context, Result};
 use crate::fs::metadata::FileEntry;
+use anyhow::{Context, Result};
+use std::path::{Path, PathBuf};
 
 /// Carga las entradas de un directorio.
 /// Orden: directorios primero (alfabético), luego archivos (alfabético), case-insensitive.
 /// Maneja errores de permisos gracefully (devuelve lo que puede leer).
 pub fn load_directory(path: &Path) -> Result<Vec<FileEntry>> {
-    let read_dir = std::fs::read_dir(path)
-        .with_context(|| format!("Cannot read directory: {:?}", path))?;
+    let read_dir =
+        std::fs::read_dir(path).with_context(|| format!("Cannot read directory: {:?}", path))?;
 
     let mut entries: Vec<FileEntry> = read_dir
         .filter_map(|entry_result| {
@@ -94,7 +94,10 @@ mod tests {
 
         // If we have both dirs and files, dirs should all come before files
         if let (Some(first_file), Some(last_dir)) = (first_file_idx, last_dir_idx) {
-            assert!(last_dir < first_file, "All dirs should come before all files");
+            assert!(
+                last_dir < first_file,
+                "All dirs should come before all files"
+            );
         }
     }
 

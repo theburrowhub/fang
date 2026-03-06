@@ -1,8 +1,8 @@
+use crate::app::events::Event;
+use anyhow::Result;
 use std::path::Path;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc::UnboundedSender;
-use anyhow::Result;
-use crate::app::events::Event;
 
 /// A static git operation with a display label and the arguments to pass to `git`.
 #[derive(Debug, Clone)]
@@ -18,19 +18,58 @@ pub const N_GIT_OPS: usize = 13;
 /// Returns the full list of git operations available in the Git menu.
 pub fn git_operations() -> Vec<GitOperation> {
     vec![
-        GitOperation { label: "Status",                   args: &["status"] },
-        GitOperation { label: "Fetch",                    args: &["fetch"] },
-        GitOperation { label: "Fetch all (prune)",        args: &["fetch", "--all", "--prune"] },
-        GitOperation { label: "Pull",                     args: &["pull"] },
-        GitOperation { label: "Pull (rebase)",            args: &["pull", "--rebase"] },
-        GitOperation { label: "Push",                     args: &["push"] },
-        GitOperation { label: "Push (force-with-lease)",  args: &["push", "--force-with-lease"] },
-        GitOperation { label: "Push new branch upstream", args: &["push", "-u", "origin", "HEAD"] },
-        GitOperation { label: "Log (last 20)",            args: &["log", "--oneline", "-20"] },
-        GitOperation { label: "List branches",            args: &["branch", "-a"] },
-        GitOperation { label: "Stash",                    args: &["stash"] },
-        GitOperation { label: "Stash pop",                args: &["stash", "pop"] },
-        GitOperation { label: "Diff (stat)",              args: &["diff", "--stat"] },
+        GitOperation {
+            label: "Status",
+            args: &["status"],
+        },
+        GitOperation {
+            label: "Fetch",
+            args: &["fetch"],
+        },
+        GitOperation {
+            label: "Fetch all (prune)",
+            args: &["fetch", "--all", "--prune"],
+        },
+        GitOperation {
+            label: "Pull",
+            args: &["pull"],
+        },
+        GitOperation {
+            label: "Pull (rebase)",
+            args: &["pull", "--rebase"],
+        },
+        GitOperation {
+            label: "Push",
+            args: &["push"],
+        },
+        GitOperation {
+            label: "Push (force-with-lease)",
+            args: &["push", "--force-with-lease"],
+        },
+        GitOperation {
+            label: "Push new branch upstream",
+            args: &["push", "-u", "origin", "HEAD"],
+        },
+        GitOperation {
+            label: "Log (last 20)",
+            args: &["log", "--oneline", "-20"],
+        },
+        GitOperation {
+            label: "List branches",
+            args: &["branch", "-a"],
+        },
+        GitOperation {
+            label: "Stash",
+            args: &["stash"],
+        },
+        GitOperation {
+            label: "Stash pop",
+            args: &["stash", "pop"],
+        },
+        GitOperation {
+            label: "Diff (stat)",
+            args: &["diff", "--stat"],
+        },
     ]
 }
 
@@ -134,7 +173,11 @@ mod tests {
     fn test_git_operations_count() {
         let ops = git_operations();
         assert_eq!(ops.len(), 13, "Expected 13 git operations");
-        assert_eq!(ops.len(), N_GIT_OPS, "N_GIT_OPS constant must match git_operations().len()");
+        assert_eq!(
+            ops.len(),
+            N_GIT_OPS,
+            "N_GIT_OPS constant must match git_operations().len()"
+        );
     }
 
     #[test]
@@ -194,7 +237,8 @@ mod tests {
                     _ => {}
                 }
             }
-        }).await;
+        })
+        .await;
 
         assert!(got_done, "Should have received GitDone event");
         assert!(!lines.is_empty(), "git status should produce output");

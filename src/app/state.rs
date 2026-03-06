@@ -78,18 +78,29 @@ pub struct HeaderInfo {
 pub enum AppMode {
     Normal,
     /// Fuzzy-search mode. `query` mirrors `AppState::search_query`.
-    Search { query: String },
+    Search {
+        query: String,
+    },
     /// Make-target selection modal is open.
     MakeTarget,
     /// Shell command input prompt (activated with `:`).
-    CommandInput { cmd: String },
+    CommandInput {
+        cmd: String,
+    },
     /// External shell command prompt (activated with `;`).
     /// Runs the command in a new terminal split/pane.
-    ExternalCommand { cmd: String },
+    ExternalCommand {
+        cmd: String,
+    },
     /// Git operations menu modal.
-    GitMenu { selected: usize },
+    GitMenu {
+        selected: usize,
+    },
     /// Creating a new file. `from_clipboard` = true means paste clipboard content.
-    NewFile { name: String, from_clipboard: bool },
+    NewFile {
+        name: String,
+        from_clipboard: bool,
+    },
 }
 
 // ─── FocusedPanel ─────────────────────────────────────────────────────────────
@@ -247,7 +258,11 @@ mod tests {
             size: 100,
             is_executable: false,
             extension: name.rsplit('.').next().map(|s| s.to_string()),
-            file_type: if is_dir { FileType::Directory } else { FileType::Unknown },
+            file_type: if is_dir {
+                FileType::Directory
+            } else {
+                FileType::Unknown
+            },
             modified: None,
         }
     }
@@ -288,10 +303,7 @@ mod tests {
     #[test]
     fn test_selected_entry_with_filter() {
         let mut s = AppState::new(PathBuf::from("."));
-        s.entries = vec![
-            make_entry("main.rs", false),
-            make_entry("lib.rs", false),
-        ];
+        s.entries = vec![make_entry("main.rs", false), make_entry("lib.rs", false)];
         s.search_query = "rs".to_string();
         s.filtered_indices = vec![0, 1];
         s.selected_index = 1;

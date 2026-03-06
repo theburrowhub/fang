@@ -1,33 +1,57 @@
-use ratatui::{
-    prelude::*,
-    widgets::Paragraph,
-};
 use crate::app::state::{AppMode, AppState};
 use crate::ui::utils::key_hint;
+use ratatui::{prelude::*, widgets::Paragraph};
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     if area.height == 0 {
         return;
     }
 
-    let line_area = Rect { x: area.x, y: area.y, width: area.width, height: 1 };
+    let line_area = Rect {
+        x: area.x,
+        y: area.y,
+        width: area.width,
+        height: 1,
+    };
 
     // CommandInput / ExternalCommand: show a vim-style prompt on the footer line.
     let prompt_line: Option<Line<'_>> = match &state.mode {
         AppMode::CommandInput { cmd } => Some(Line::from(vec![
-            Span::styled(": ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                ": ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(cmd.as_str().to_owned(), Style::default().fg(Color::White)),
             Span::styled("\u{2588}", Style::default().fg(Color::Cyan)),
         ])),
         AppMode::ExternalCommand { cmd } => Some(Line::from(vec![
-            Span::styled("; ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "; ",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(cmd.as_str().to_owned(), Style::default().fg(Color::White)),
             Span::styled("\u{2588}", Style::default().fg(Color::Green)),
         ])),
-        AppMode::NewFile { name, from_clipboard } => {
-            let prefix = if *from_clipboard { "new (clipboard): " } else { "new: " };
+        AppMode::NewFile {
+            name,
+            from_clipboard,
+        } => {
+            let prefix = if *from_clipboard {
+                "new (clipboard): "
+            } else {
+                "new: "
+            };
             Some(Line::from(vec![
-                Span::styled(prefix, Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    prefix,
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(name.as_str().to_owned(), Style::default().fg(Color::White)),
                 Span::styled("\u{2588}", Style::default().fg(Color::Yellow)),
             ]))
@@ -82,7 +106,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             s
         }
         // CommandInput / ExternalCommand / NewFile handled above via early return.
-        AppMode::CommandInput { .. } | AppMode::ExternalCommand { .. } | AppMode::NewFile { .. } => vec![],
+        AppMode::CommandInput { .. }
+        | AppMode::ExternalCommand { .. }
+        | AppMode::NewFile { .. } => vec![],
     };
 
     frame.render_widget(

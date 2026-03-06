@@ -1,19 +1,12 @@
-use std::path::Path;
 use crate::app::state::PreviewState;
+use std::path::Path;
 
 const BINARY_EXTENSIONS: &[&str] = &[
-    "exe", "bin", "dll", "so", "dylib", "obj", "o",
-    "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "tiff",
-    "mp4", "mkv", "avi", "mov", "webm",
-    "mp3", "wav", "flac", "ogg", "aac",
-    "zip", "tar", "gz", "bz2", "7z", "rar", "xz",
-    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
-    "dmg", "iso", "img",
-    "class", "jar", "war",
-    "pyc", "pyo",
-    "wasm",
-    "ttf", "otf", "woff", "woff2",
-    "db", "sqlite", "sqlite3",
+    "exe", "bin", "dll", "so", "dylib", "obj", "o", "png", "jpg", "jpeg", "gif", "webp", "bmp",
+    "ico", "tiff", "mp4", "mkv", "avi", "mov", "webm", "mp3", "wav", "flac", "ogg", "aac", "zip",
+    "tar", "gz", "bz2", "7z", "rar", "xz", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+    "dmg", "iso", "img", "class", "jar", "war", "pyc", "pyo", "wasm", "ttf", "otf", "woff",
+    "woff2", "db", "sqlite", "sqlite3",
 ];
 
 const MIME_HINTS: &[(&str, &str)] = &[
@@ -36,7 +29,11 @@ const MIME_HINTS: &[(&str, &str)] = &[
 pub fn is_binary_by_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
-        .map(|e| BINARY_EXTENSIONS.iter().any(|&ext| ext.eq_ignore_ascii_case(e)))
+        .map(|e| {
+            BINARY_EXTENSIONS
+                .iter()
+                .any(|&ext| ext.eq_ignore_ascii_case(e))
+        })
         .unwrap_or(false)
 }
 
@@ -47,7 +44,9 @@ pub fn is_binary_by_content(data: &[u8]) -> bool {
 }
 
 pub fn is_binary_file(path: &Path) -> bool {
-    if is_binary_by_extension(path) { return true; }
+    if is_binary_by_extension(path) {
+        return true;
+    }
     // Check content
     std::fs::read(path)
         .map(|data| is_binary_by_content(&data))
@@ -58,7 +57,10 @@ pub fn get_mime_hint(path: &Path) -> String {
     path.extension()
         .and_then(|e| e.to_str())
         .and_then(|ext| {
-            MIME_HINTS.iter().find(|(e, _)| e.eq_ignore_ascii_case(ext)).map(|(_, h)| h.to_string())
+            MIME_HINTS
+                .iter()
+                .find(|(e, _)| e.eq_ignore_ascii_case(ext))
+                .map(|(_, h)| h.to_string())
         })
         .unwrap_or_else(|| "Binary file".to_string())
 }
@@ -84,8 +86,15 @@ pub fn format_hex_dump(data: &[u8], max_lines: usize) -> Vec<String> {
             hex_col.push_str(&format!("{:02x}", byte));
         }
 
-        let ascii_part: String = chunk.iter()
-            .map(|&b| if (32..127).contains(&b) { b as char } else { '.' })
+        let ascii_part: String = chunk
+            .iter()
+            .map(|&b| {
+                if (32..127).contains(&b) {
+                    b as char
+                } else {
+                    '.'
+                }
+            })
             .collect();
 
         // {:<49} pads hex_col to exactly 49 chars, keeping partial rows aligned
@@ -134,9 +143,9 @@ mod tests {
         let data = b"Hello World!";
         let lines = format_hex_dump(data, 10);
         assert!(!lines.is_empty());
-        assert!(lines[0].contains("48 65 6c 6c"));  // "Hell" in hex
-        assert!(lines[0].contains("Hello"));  // ASCII representation
-        assert!(lines[0].starts_with("00000000"));  // offset
+        assert!(lines[0].contains("48 65 6c 6c")); // "Hell" in hex
+        assert!(lines[0].contains("Hello")); // ASCII representation
+        assert!(lines[0].starts_with("00000000")); // offset
     }
 
     #[test]
@@ -157,8 +166,17 @@ mod tests {
 
     #[test]
     fn test_get_mime_hint() {
-        assert_eq!(get_mime_hint(std::path::Path::new("image.png")), "PNG image");
-        assert_eq!(get_mime_hint(std::path::Path::new("video.mp4")), "MP4 video");
-        assert_eq!(get_mime_hint(std::path::Path::new("unknown.xyz")), "Binary file");
+        assert_eq!(
+            get_mime_hint(std::path::Path::new("image.png")),
+            "PNG image"
+        );
+        assert_eq!(
+            get_mime_hint(std::path::Path::new("video.mp4")),
+            "MP4 video"
+        );
+        assert_eq!(
+            get_mime_hint(std::path::Path::new("unknown.xyz")),
+            "Binary file"
+        );
     }
 }

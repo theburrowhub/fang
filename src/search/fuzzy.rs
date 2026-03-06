@@ -1,7 +1,7 @@
-use std::sync::OnceLock;
-use fuzzy_matcher::FuzzyMatcher;
-use fuzzy_matcher::skim::SkimMatcherV2;
 use crate::app::state::{AppState, FileEntry};
+use fuzzy_matcher::skim::SkimMatcherV2;
+use fuzzy_matcher::FuzzyMatcher;
+use std::sync::OnceLock;
 
 /// Singleton matcher — expensive to initialise, so it is shared for the lifetime of the process.
 static MATCHER: OnceLock<SkimMatcherV2> = OnceLock::new();
@@ -58,7 +58,8 @@ pub fn visible_entries<'a>(state: &'a AppState) -> Vec<(usize, &'a FileEntry)> {
     if state.search_query.is_empty() {
         state.entries.iter().enumerate().collect()
     } else {
-        state.filtered_indices
+        state
+            .filtered_indices
             .iter()
             .map(|&i| (i, &state.entries[i]))
             .collect()
@@ -68,7 +69,10 @@ pub fn visible_entries<'a>(state: &'a AppState) -> Vec<(usize, &'a FileEntry)> {
 /// Returns the real index in `state.entries` of the currently selected entry.
 pub fn current_entry_index(state: &AppState) -> Option<usize> {
     if state.search_query.is_empty() {
-        state.entries.get(state.selected_index).map(|_| state.selected_index)
+        state
+            .entries
+            .get(state.selected_index)
+            .map(|_| state.selected_index)
     } else {
         state.filtered_indices.get(state.selected_index).copied()
     }
@@ -89,7 +93,9 @@ pub fn match_positions(query: &str, text: &str) -> Option<Vec<usize>> {
         return None;
     }
     let matcher = get_matcher();
-    matcher.fuzzy_indices(text, query).map(|(_, indices)| indices)
+    matcher
+        .fuzzy_indices(text, query)
+        .map(|(_, indices)| indices)
 }
 
 /// Returns the number of entries currently visible (after applying the filter).
@@ -142,8 +148,7 @@ mod tests {
 
     #[test]
     fn test_empty_query_shows_all() {
-        let mut state =
-            make_state(&[("main.rs", false), ("lib.rs", false), ("Cargo.toml", false)]);
+        let mut state = make_state(&[("main.rs", false), ("lib.rs", false), ("Cargo.toml", false)]);
         state.search_query = String::new();
         apply_search(&mut state);
         assert_eq!(state.filtered_indices.len(), 3);
@@ -181,7 +186,10 @@ mod tests {
         state.selected_index = 1;
         state.search_query = "main".to_string();
         apply_search(&mut state);
-        assert_eq!(state.selected_index, 0, "Selection should reset to 0 on search");
+        assert_eq!(
+            state.selected_index, 0,
+            "Selection should reset to 0 on search"
+        );
     }
 
     #[test]
@@ -233,11 +241,7 @@ mod tests {
 
     #[test]
     fn test_visible_count() {
-        let mut state = make_state(&[
-            ("main.rs", false),
-            ("lib.rs", false),
-            ("Cargo.toml", false),
-        ]);
+        let mut state = make_state(&[("main.rs", false), ("lib.rs", false), ("Cargo.toml", false)]);
         assert_eq!(visible_count(&state), 3);
 
         state.search_query = "rs".to_string();
@@ -249,10 +253,7 @@ mod tests {
     #[test]
     fn test_results_ordered_by_score() {
         // "main" should score higher against "main.rs" than against "remains.rs"
-        let mut state = make_state(&[
-            ("remains.rs", false),
-            ("main.rs", false),
-        ]);
+        let mut state = make_state(&[("remains.rs", false), ("main.rs", false)]);
         state.search_query = "main".to_string();
         apply_search(&mut state);
         assert!(!state.filtered_indices.is_empty());
@@ -267,16 +268,15 @@ mod tests {
         state.file_list_scroll = 5;
         state.search_query = "lib".to_string();
         apply_search(&mut state);
-        assert_eq!(state.file_list_scroll, 0, "Scroll should reset to 0 on search");
+        assert_eq!(
+            state.file_list_scroll, 0,
+            "Scroll should reset to 0 on search"
+        );
     }
 
     #[test]
     fn test_current_entry_returns_correct_file() {
-        let mut state = make_state(&[
-            ("Cargo.toml", false),
-            ("main.rs", false),
-            ("lib.rs", false),
-        ]);
+        let mut state = make_state(&[("Cargo.toml", false), ("main.rs", false), ("lib.rs", false)]);
         state.search_query = "lib".to_string();
         apply_search(&mut state);
         let entry = current_entry(&state);
@@ -309,7 +309,13 @@ mod tests {
             .iter()
             .map(|&i| state.entries[i].name.as_str())
             .collect();
-        assert!(names.contains(&"Makefile"), "Makefile should match lowercase 'make'");
-        assert!(names.contains(&"makefile.bak"), "makefile.bak should match 'make'");
+        assert!(
+            names.contains(&"Makefile"),
+            "Makefile should match lowercase 'make'"
+        );
+        assert!(
+            names.contains(&"makefile.bak"),
+            "makefile.bak should match 'make'"
+        );
     }
 }

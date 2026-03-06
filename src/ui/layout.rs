@@ -1,7 +1,7 @@
+use super::components;
+use crate::app::state::{AppMode, AppState};
 use ratatui::prelude::*;
 use ratatui::widgets::Clear;
-use crate::app::state::{AppState, AppMode};
-use super::components;
 
 pub fn draw(frame: &mut Frame, state: &AppState) {
     let area = frame.area();
@@ -43,11 +43,9 @@ fn render_main_panels(frame: &mut Frame, area: Rect, state: &AppState) {
             components::file_list::render(frame, area, state);
         } else {
             // file_list + preview
-            let [list_area, preview_area] = Layout::horizontal([
-                Constraint::Percentage(40),
-                Constraint::Percentage(60),
-            ])
-            .areas(area);
+            let [list_area, preview_area] =
+                Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)])
+                    .areas(area);
             components::file_list::render(frame, list_area, state);
             components::preview::render(frame, preview_area, state);
         }
@@ -64,11 +62,8 @@ fn render_main_panels(frame: &mut Frame, area: Rect, state: &AppState) {
             components::file_list::render(frame, list_area, state);
             components::preview::render(frame, preview_area, state);
         } else {
-            let [sidebar_area, list_area] = Layout::horizontal([
-                Constraint::Length(22),
-                Constraint::Min(0),
-            ])
-            .areas(area);
+            let [sidebar_area, list_area] =
+                Layout::horizontal([Constraint::Length(22), Constraint::Min(0)]).areas(area);
             components::sidebar::render(frame, sidebar_area, state);
             components::file_list::render(frame, list_area, state);
         }
@@ -103,13 +98,20 @@ fn render_git_modal(frame: &mut Frame, area: Rect, state: &AppState) {
 
     let op_count = N_GIT_OPS as u16;
     let modal_width = (area.width * 2 / 3).min(70).max(50);
-    let modal_height = op_count.saturating_mul(2).saturating_add(6)
+    let modal_height = op_count
+        .saturating_mul(2)
+        .saturating_add(6)
         .min(area.height.saturating_sub(4))
         .max(10);
 
     let x = (area.width.saturating_sub(modal_width)) / 2;
     let y = (area.height.saturating_sub(modal_height)) / 2;
-    let modal_area = Rect { x, y, width: modal_width, height: modal_height };
+    let modal_area = Rect {
+        x,
+        y,
+        width: modal_width,
+        height: modal_height,
+    };
 
     frame.render_widget(Clear, modal_area);
     components::git_modal::render(frame, modal_area, state);

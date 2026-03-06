@@ -110,9 +110,7 @@ end try"#,
 fn linux_read_clipboard() -> Result<Vec<u8>, String> {
     // Try image MIME types first (for images copied from browser).
     for mime in &["image/png", "image/jpeg", "image/webp", "image/tiff"] {
-        if let Some(data) = try_wl_paste_mime(mime)
-            .or_else(|| try_xclip_mime(mime))
-        {
+        if let Some(data) = try_wl_paste_mime(mime).or_else(|| try_xclip_mime(mime)) {
             if !data.is_empty() {
                 return Ok(data);
             }
@@ -126,7 +124,10 @@ fn linux_read_clipboard() -> Result<Vec<u8>, String> {
         &["xsel", "--clipboard", "--output"],
     ];
     for tool in tools {
-        if let Ok(out) = std::process::Command::new(tool[0]).args(&tool[1..]).output() {
+        if let Ok(out) = std::process::Command::new(tool[0])
+            .args(&tool[1..])
+            .output()
+        {
             if out.status.success() {
                 return Ok(out.stdout);
             }

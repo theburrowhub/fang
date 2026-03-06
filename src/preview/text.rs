@@ -1,9 +1,9 @@
+use crate::app::state::{PreviewState, StyledLine};
 use std::path::Path;
 use std::sync::OnceLock;
-use syntect::parsing::SyntaxSet;
-use syntect::highlighting::ThemeSet;
 use syntect::easy::HighlightLines;
-use crate::app::state::{PreviewState, StyledLine};
+use syntect::highlighting::ThemeSet;
+use syntect::parsing::SyntaxSet;
 
 static SYNTAX_SET: OnceLock<SyntaxSet> = OnceLock::new();
 static THEME_SET: OnceLock<ThemeSet> = OnceLock::new();
@@ -17,7 +17,8 @@ fn get_syntax_set() -> &'static SyntaxSet {
 
 fn get_theme() -> &'static syntect::highlighting::Theme {
     let ts = THEME_SET.get_or_init(ThemeSet::load_defaults);
-    ts.themes.get("base16-ocean.dark")
+    ts.themes
+        .get("base16-ocean.dark")
         .or_else(|| ts.themes.values().next())
         .expect("at least one theme available")
 }
@@ -27,11 +28,10 @@ fn syntect_color_to_ratatui(c: syntect::highlighting::Color) -> ratatui::style::
 }
 
 fn syntect_style_to_ratatui(style: syntect::highlighting::Style) -> ratatui::style::Style {
-    use ratatui::style::{Style, Modifier};
+    use ratatui::style::{Modifier, Style};
     use syntect::highlighting::FontStyle;
 
-    let mut s = Style::default()
-        .fg(syntect_color_to_ratatui(style.foreground));
+    let mut s = Style::default().fg(syntect_color_to_ratatui(style.foreground));
 
     if style.font_style.contains(FontStyle::BOLD) {
         s = s.add_modifier(Modifier::BOLD);
@@ -81,7 +81,8 @@ pub async fn load_text_preview(path: &Path) -> PreviewState {
 fn highlight_content(path: &Path, content: String) -> PreviewState {
     let ss = get_syntax_set();
     let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    let syntax = ss.find_syntax_by_extension(extension)
+    let syntax = ss
+        .find_syntax_by_extension(extension)
         .or_else(|| ss.find_syntax_by_first_line(content.lines().next().unwrap_or("")))
         .unwrap_or_else(|| ss.find_syntax_plain_text());
 
@@ -96,7 +97,8 @@ fn highlight_content(path: &Path, content: String) -> PreviewState {
         total_lines += 1;
         if total_lines <= MAX_LINES {
             let spans = match highlighter.highlight_line(line, ss) {
-                Ok(ranges) => ranges.into_iter()
+                Ok(ranges) => ranges
+                    .into_iter()
                     .map(|(style, text)| (syntect_style_to_ratatui(style), text.to_string()))
                     .collect(),
                 // Fallback to plain text span on highlight error — never silently drop lines
@@ -133,7 +135,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_too_large_file() {
-        let result = PreviewState::TooLarge { size: 2 * 1024 * 1024 };
+        let result = PreviewState::TooLarge {
+            size: 2 * 1024 * 1024,
+        };
         if let PreviewState::TooLarge { size } = result {
             assert_eq!(size, 2 * 1024 * 1024);
         }
@@ -141,7 +145,12 @@ mod tests {
 
     #[test]
     fn test_syntect_color_conversion() {
-        let color = syntect::highlighting::Color { r: 255, g: 128, b: 0, a: 255 };
+        let color = syntect::highlighting::Color {
+            r: 255,
+            g: 128,
+            b: 0,
+            a: 255,
+        };
         let ratatui_color = syntect_color_to_ratatui(color);
         assert_eq!(ratatui_color, ratatui::style::Color::Rgb(255, 128, 0));
     }

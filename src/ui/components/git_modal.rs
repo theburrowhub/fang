@@ -1,10 +1,10 @@
+use crate::app::state::AppState;
+use crate::commands::git::git_operations;
+use crate::ui::utils::key_hint;
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
 };
-use crate::app::state::AppState;
-use crate::ui::utils::key_hint;
-use crate::commands::git::git_operations;
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let selected = if let crate::app::state::AppMode::GitMenu { selected } = state.mode {
@@ -61,10 +61,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     inst_spans.extend(key_hint("Enter", "Run"));
     inst_spans.extend(key_hint("Esc", "Cancel"));
     inst_spans.extend(key_hint("j/k", "Navigate"));
-    frame.render_widget(
-        Paragraph::new(Line::from(inst_spans)),
-        instructions_area,
-    );
+    frame.render_widget(Paragraph::new(Line::from(inst_spans)), instructions_area);
 
     let ops = git_operations();
 

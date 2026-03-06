@@ -2,9 +2,9 @@ use anyhow::Result;
 #[cfg(unix)]
 extern crate libc;
 use crossterm::{
-    event::{EventStream, Event as CrosstermEvent},
+    event::{Event as CrosstermEvent, EventStream},
     execute,
-    terminal::{enable_raw_mode, disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use futures::StreamExt;
 use ratatui::prelude::*;
@@ -15,14 +15,14 @@ use tokio::sync::mpsc::{self, UnboundedSender};
 use tokio::time::interval;
 
 mod app;
-mod ui;
+mod commands;
 mod fs;
 mod preview;
 mod search;
-mod commands;
+mod ui;
 
+use app::actions::{map_key_to_action, Action};
 use app::events::Event;
-use app::actions::{Action, map_key_to_action};
 use app::state::AppState;
 
 /// Sets up a panic hook that restores the terminal before printing the panic message.
@@ -78,7 +78,13 @@ fn schedule_header_info_load(dir: &std::path::Path, tx: &UnboundedSender<Event>)
 
         // Git branch — sequential: SHA lookup only needed on detached HEAD
         if let Ok(output) = tokio::process::Command::new("git")
-            .args(["-C", dir.to_str().unwrap_or("."), "rev-parse", "--abbrev-ref", "HEAD"])
+            .args([
+                "-C",
+                dir.to_str().unwrap_or("."),
+                "rev-parse",
+                "--abbrev-ref",
+                "HEAD",
+            ])
             .output()
             .await
         {
@@ -89,7 +95,13 @@ fn schedule_header_info_load(dir: &std::path::Path, tx: &UnboundedSender<Event>)
                 } else if branch == "HEAD" {
                     // Detached HEAD — show short SHA
                     if let Ok(sha_out) = tokio::process::Command::new("git")
-                        .args(["-C", dir.to_str().unwrap_or("."), "rev-parse", "--short", "HEAD"])
+                        .args([
+                            "-C",
+                            dir.to_str().unwrap_or("."),
+                            "rev-parse",
+                            "--short",
+                            "HEAD",
+                        ])
                         .output()
                         .await
                     {
@@ -119,7 +131,9 @@ fn schedule_header_info_load(dir: &std::path::Path, tx: &UnboundedSender<Event>)
 
         let (py_result, go_result, node_result, rs_result) = tokio::join!(
             async {
-                let Some(py_path) = python_path else { return None };
+                let Some(py_path) = python_path else {
+                    return None;
+                };
                 let out = tokio::process::Command::new(&py_path)
                     .arg("--version")
                     .output()
@@ -129,10 +143,16 @@ fn schedule_header_info_load(dir: &std::path::Path, tx: &UnboundedSender<Event>)
                 let ver_str = String::from_utf8_lossy(&out.stdout).to_string()
                     + &String::from_utf8_lossy(&out.stderr);
                 let version = ver_str.trim().trim_start_matches("Python ").to_string();
-                if version.is_empty() { None } else { Some(("py".to_string(), version)) }
+                if version.is_empty() {
+                    None
+                } else {
+                    Some(("py".to_string(), version))
+                }
             },
             async {
-                if !has_go_mod { return None; }
+                if !has_go_mod {
+                    return None;
+                }
                 let out = tokio::process::Command::new("go")
                     .arg("version")
                     .output()
@@ -140,11 +160,21 @@ fn schedule_header_info_load(dir: &std::path::Path, tx: &UnboundedSender<Event>)
                     .ok()?;
                 // "go version go1.22.1 darwin/arm64" — extract "1.22.1"
                 let s = String::from_utf8_lossy(&out.stdout).to_string();
-                let ver = s.split_whitespace().nth(2)?.trim_start_matches("go").to_string();
-                if ver.is_empty() { None } else { Some(("go".to_string(), ver)) }
+                let ver = s
+                    .split_whitespace()
+                    .nth(2)?
+                    .trim_start_matches("go")
+                    .to_string();
+                if ver.is_empty() {
+                    None
+                } else {
+                    Some(("go".to_string(), ver))
+                }
             },
             async {
-                if !has_package_json { return None; }
+                if !has_package_json {
+                    return None;
+                }
                 let out = tokio::process::Command::new("node")
                     .arg("--version")
                     .output()
@@ -155,10 +185,16 @@ fn schedule_header_info_load(dir: &std::path::Path, tx: &UnboundedSender<Event>)
                     .trim()
                     .trim_start_matches('v')
                     .to_string();
-                if v.is_empty() { None } else { Some(("node".to_string(), v)) }
+                if v.is_empty() {
+                    None
+                } else {
+                    Some(("node".to_string(), v))
+                }
             },
             async {
-                if !has_cargo_toml { return None; }
+                if !has_cargo_toml {
+                    return None;
+                }
                 let out = tokio::process::Command::new("rustc")
                     .arg("--version")
                     .output()
@@ -167,11 +203,18 @@ fn schedule_header_info_load(dir: &std::path::Path, tx: &UnboundedSender<Event>)
                 // "rustc 1.75.0 (82e1608df 2023-12-21)" — take "1.75.0"
                 let s = String::from_utf8_lossy(&out.stdout).to_string();
                 let ver = s.split_whitespace().nth(1)?.to_string();
-                if ver.is_empty() { None } else { Some(("rs".to_string(), ver)) }
+                if ver.is_empty() {
+                    None
+                } else {
+                    Some(("rs".to_string(), ver))
+                }
             },
         );
 
-        for result in [py_result, go_result, node_result, rs_result].into_iter().flatten() {
+        for result in [py_result, go_result, node_result, rs_result]
+            .into_iter()
+            .flatten()
+        {
             info.dev_envs.push(result);
         }
 
@@ -246,11 +289,7 @@ fn apply_search_update(state: &mut AppState, tx: &UnboundedSender<Event>) {
 }
 
 /// Handles an Action, updating state and spawning tasks as needed.
-fn handle_action(
-    action: &Action,
-    state: &mut AppState,
-    tx: &UnboundedSender<Event>,
-) {
+fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Event>) {
     match action {
         Action::Quit => {
             state.should_quit = true;
@@ -294,7 +333,9 @@ fn handle_action(
             state.preview_visible = !state.preview_visible;
         }
         Action::OpenSearch => {
-            state.mode = app::state::AppMode::Search { query: String::new() };
+            state.mode = app::state::AppMode::Search {
+                query: String::new(),
+            };
             state.search_query.clear();
             // Show all entries initially
             state.filtered_indices = (0..state.entries.len()).collect();
@@ -427,35 +468,40 @@ fn handle_action(
                 state.mode = app::state::AppMode::Normal;
 
                 // Stdin pipe: keypresses typed while the command runs are forwarded here.
-                let (stdin_tx, mut stdin_rx) =
-                    tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+                let (stdin_tx, mut stdin_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
                 state.command_stdin = Some(stdin_tx);
 
                 tokio::spawn(async move {
-                    use tokio::process::Command;
-                    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
                     use std::os::unix::process::CommandExt;
+                    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+                    use tokio::process::Command;
 
                     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
                     let mut cmd_builder = Command::new(&shell);
                     cmd_builder
                         .args(["-i", "-c", &cmd])
                         .current_dir(&dir)
-                        .stdin(std::process::Stdio::piped())   // pipe, not null
+                        .stdin(std::process::Stdio::piped()) // pipe, not null
                         .stdout(std::process::Stdio::piped())
                         .stderr(std::process::Stdio::piped());
 
                     // setsid() creates a new session with no controlling terminal so the
                     // interactive shell cannot call tcsetpgrp() against fang's terminal.
                     unsafe {
-                        cmd_builder.pre_exec(|| { libc::setsid(); Ok(()) });
+                        cmd_builder.pre_exec(|| {
+                            libc::setsid();
+                            Ok(())
+                        });
                     }
 
                     let mut child = match cmd_builder.spawn() {
                         Ok(c) => c,
                         Err(e) => {
                             let _ = tx.send(Event::MakeOutputLine(format!("Error: {}", e)));
-                            let _ = tx.send(Event::CommandOutput { lines: vec![], exit_code: -1 });
+                            let _ = tx.send(Event::CommandOutput {
+                                lines: vec![],
+                                exit_code: -1,
+                            });
                             return;
                         }
                     };
@@ -480,18 +526,25 @@ fn handle_action(
                     let tx_err = tx.clone();
                     let stdout_task = tokio::spawn(async move {
                         while let Ok(Some(line)) = stdout_reader.next_line().await {
-                            if tx_out.send(Event::MakeOutputLine(line)).is_err() { break; }
+                            if tx_out.send(Event::MakeOutputLine(line)).is_err() {
+                                break;
+                            }
                         }
                     });
                     let stderr_task = tokio::spawn(async move {
                         while let Ok(Some(line)) = stderr_reader.next_line().await {
-                            if tx_err.send(Event::MakeOutputLine(line)).is_err() { break; }
+                            if tx_err.send(Event::MakeOutputLine(line)).is_err() {
+                                break;
+                            }
                         }
                     });
                     let status = child.wait().await.ok();
                     let _ = tokio::join!(stdout_task, stderr_task, stdin_relay);
                     let code = status.and_then(|s| s.code()).unwrap_or(-1);
-                    let _ = tx.send(Event::CommandOutput { lines: vec![], exit_code: code });
+                    let _ = tx.send(Event::CommandOutput {
+                        lines: vec![],
+                        exit_code: code,
+                    });
                 });
             } else {
                 state.mode = app::state::AppMode::Normal;
@@ -579,10 +632,16 @@ fn handle_action(
         }
         // ── New file ──────────────────────────────────────────────────────────
         Action::OpenNewFile => {
-            state.mode = app::state::AppMode::NewFile { name: String::new(), from_clipboard: false };
+            state.mode = app::state::AppMode::NewFile {
+                name: String::new(),
+                from_clipboard: false,
+            };
         }
         Action::OpenNewFileFromClipboard => {
-            state.mode = app::state::AppMode::NewFile { name: String::new(), from_clipboard: true };
+            state.mode = app::state::AppMode::NewFile {
+                name: String::new(),
+                from_clipboard: true,
+            };
         }
         Action::NewFileChar(c) => {
             if let app::state::AppMode::NewFile { name, .. } = &mut state.mode {
@@ -598,12 +657,19 @@ fn handle_action(
             state.mode = app::state::AppMode::Normal;
         }
         Action::CreateNewFile => {
-            let (name, from_clipboard) =
-                if let app::state::AppMode::NewFile { name, from_clipboard } = &state.mode {
-                    (name.clone(), *from_clipboard)
-                } else { return; };
+            let (name, from_clipboard) = if let app::state::AppMode::NewFile {
+                name,
+                from_clipboard,
+            } = &state.mode
+            {
+                (name.clone(), *from_clipboard)
+            } else {
+                return;
+            };
             state.mode = app::state::AppMode::Normal;
-            if name.is_empty() { return; }
+            if name.is_empty() {
+                return;
+            }
             let file_path = state.current_dir.join(&name);
             let dir = state.current_dir.clone();
             let tx2 = tx.clone();
@@ -614,8 +680,12 @@ fn handle_action(
                     vec![]
                 };
                 match tokio::fs::write(&file_path, &content).await {
-                    Ok(()) => { schedule_directory_load(dir, &tx2); }
-                    Err(e) => { tracing::warn!("Failed to create file: {}", e); }
+                    Ok(()) => {
+                        schedule_directory_load(dir, &tx2);
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to create file: {}", e);
+                    }
                 }
             });
         }
@@ -632,9 +702,7 @@ fn handle_event(event: Event, state: &mut AppState, tx: &UnboundedSender<Event>)
                 use crossterm::event::{KeyCode, KeyModifiers};
                 let bytes: Option<Vec<u8>> = match key_event.code {
                     // Ctrl+C → send ETX (0x03); many programs treat this as cancel
-                    KeyCode::Char('c')
-                        if key_event.modifiers.contains(KeyModifiers::CONTROL) =>
-                    {
+                    KeyCode::Char('c') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
                         Some(vec![0x03])
                     }
                     KeyCode::Enter => Some(vec![b'\n']),
@@ -754,15 +822,15 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_writer(non_blocking)
         .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("fang=debug".parse()?)
+            tracing_subscriber::EnvFilter::from_default_env().add_directive("fang=debug".parse()?),
         )
         .init();
 
     setup_panic_hook();
 
     // Determine initial directory
-    let initial_dir = std::env::args().nth(1)
+    let initial_dir = std::env::args()
+        .nth(1)
         .map(PathBuf::from)
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 

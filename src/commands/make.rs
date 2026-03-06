@@ -1,9 +1,9 @@
-use std::path::{Path, PathBuf};
-use tokio::sync::mpsc::UnboundedSender;
-use tokio::io::{AsyncBufReadExt, BufReader};
-use anyhow::{Result, Context};
-use crate::app::state::MakeTarget;
 use crate::app::events::Event;
+use crate::app::state::MakeTarget;
+use anyhow::{Context, Result};
+use std::path::{Path, PathBuf};
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::sync::mpsc::UnboundedSender;
 
 /// Verifica si existe un Makefile en el directorio dado.
 pub fn has_makefile(dir: &Path) -> bool {
@@ -110,7 +110,10 @@ pub fn parse_targets_from_content(content: &str) -> Result<Vec<MakeTarget>> {
 
 fn is_valid_target_name(name: &str) -> bool {
     // Spaces are implicitly excluded by the char allowlist, so no extra check needed.
-    !name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
 }
 
 /// Ejecuta `make <target>` en el directorio dado de forma asíncrona.
@@ -120,10 +123,12 @@ fn is_valid_target_name(name: &str) -> bool {
 /// Resolve the `make` binary, trying the PATH first, then common system locations.
 fn find_make_binary() -> Option<std::path::PathBuf> {
     // Fast path: let the OS resolve via PATH
-    if std::process::Command::new("make").arg("--version")
+    if std::process::Command::new("make")
+        .arg("--version")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
-        .status().is_ok()
+        .status()
+        .is_ok()
     {
         return Some(std::path::PathBuf::from("make"));
     }
@@ -141,11 +146,7 @@ fn find_make_binary() -> Option<std::path::PathBuf> {
     None
 }
 
-pub async fn run_target(
-    target: &str,
-    dir: &Path,
-    tx: UnboundedSender<Event>,
-) -> Result<()> {
+pub async fn run_target(target: &str, dir: &Path, tx: UnboundedSender<Event>) -> Result<()> {
     use tokio::process::Command;
 
     let make_bin = match find_make_binary() {
@@ -203,14 +204,19 @@ pub async fn run_target(
 
     let stderr_task = tokio::spawn(async move {
         while let Ok(Some(line)) = stderr_reader.next_line().await {
-            if tx_stderr.send(Event::MakeOutputLine(format!("stderr: {}", line))).is_err() {
+            if tx_stderr
+                .send(Event::MakeOutputLine(format!("stderr: {}", line)))
+                .is_err()
+            {
                 break;
             }
         }
     });
 
     // Wait for process to finish and both readers to complete
-    let exit_status = child.wait().await
+    let exit_status = child
+        .wait()
+        .await
         .with_context(|| "Failed to wait for make process")?;
 
     // Wait for readers to flush
@@ -238,8 +244,14 @@ mod tests {
         let content = "build:\n\tcargo build\n\ntest:\n\tcargo test\n";
         let path = write_temp_makefile(content, "simple");
         let targets = parse_targets(&path).unwrap();
-        assert!(targets.iter().any(|t| t.name == "build"), "build target missing");
-        assert!(targets.iter().any(|t| t.name == "test"), "test target missing");
+        assert!(
+            targets.iter().any(|t| t.name == "build"),
+            "build target missing"
+        );
+        assert!(
+            targets.iter().any(|t| t.name == "test"),
+            "test target missing"
+        );
         std::fs::remove_file(&path).ok();
     }
 
@@ -304,7 +316,10 @@ mod tests {
     #[test]
     fn test_find_makefile_nonexistent_dir_returns_none() {
         let path = std::path::Path::new("/tmp/fang_this_dir_does_not_exist_xyzzy");
-        assert!(find_makefile(path).is_none(), "Non-existent dir should return None");
+        assert!(
+            find_makefile(path).is_none(),
+            "Non-existent dir should return None"
+        );
     }
 
     #[test]
@@ -335,7 +350,10 @@ mod tests {
         // The important thing is that it finds *something*.
         assert!(found.is_some(), "Should find the lowercase makefile");
         let found_path = found.unwrap();
-        let file_name = found_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        let file_name = found_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("");
         assert!(
             file_name.eq_ignore_ascii_case("makefile"),
             "Found file '{}' should be a makefile variant",
@@ -363,7 +381,10 @@ mod tests {
         assert_eq!(targets[0].name, "test");
         assert_eq!(targets[0].description, Some("Run all tests".to_string()));
         assert_eq!(targets[1].name, "build-release");
-        assert_eq!(targets[1].description, Some("Build release binary".to_string()));
+        assert_eq!(
+            targets[1].description,
+            Some("Build release binary".to_string())
+        );
     }
 
     #[test]
@@ -371,7 +392,10 @@ mod tests {
         let content = "## This should not attach\n\nbuild:\n\tcargo build\n";
         let targets = parse_targets_from_content(content).unwrap();
         let build = targets.iter().find(|t| t.name == "build").unwrap();
-        assert!(build.description.is_none(), "description should be cleared by empty line");
+        assert!(
+            build.description.is_none(),
+            "description should be cleared by empty line"
+        );
     }
 
     #[test]
@@ -416,15 +440,30 @@ clean:
         assert!(names.contains(&"test"), "test missing");
         assert!(names.contains(&"test-race"), "test-race missing");
         assert!(names.contains(&"clean"), "clean missing");
-        assert!(!names.contains(&"CC"), "CC (variable) should not be a target");
-        assert!(!names.contains(&"LD"), "LD (variable) should not be a target");
-        assert!(!names.iter().any(|n| n.starts_with('.')), ".PHONY should not be a target");
+        assert!(
+            !names.contains(&"CC"),
+            "CC (variable) should not be a target"
+        );
+        assert!(
+            !names.contains(&"LD"),
+            "LD (variable) should not be a target"
+        );
+        assert!(
+            !names.iter().any(|n| n.starts_with('.')),
+            ".PHONY should not be a target"
+        );
 
         let build_target = targets.iter().find(|t| t.name == "build").unwrap();
-        assert_eq!(build_target.description, Some("Build the project".to_string()));
+        assert_eq!(
+            build_target.description,
+            Some("Build the project".to_string())
+        );
 
         let clean_target = targets.iter().find(|t| t.name == "clean").unwrap();
-        assert_eq!(clean_target.description, Some("Clean build artifacts".to_string()));
+        assert_eq!(
+            clean_target.description,
+            Some("Clean build artifacts".to_string())
+        );
     }
 
     #[tokio::test]
@@ -456,11 +495,14 @@ clean:
                     _ => {}
                 }
             }
-        }).await;
+        })
+        .await;
 
         assert!(got_done, "Should have received MakeDone event");
         assert!(
-            output_lines.iter().any(|l| l.contains("Hello") || l.contains("hello")),
+            output_lines
+                .iter()
+                .any(|l| l.contains("Hello") || l.contains("hello")),
             "Expected echo output, got: {:?}",
             output_lines
         );
@@ -495,10 +537,15 @@ clean:
                     _ => {}
                 }
             }
-        }).await;
+        })
+        .await;
 
         assert!(exit_code.is_some(), "Should have received MakeDone");
-        assert_ne!(exit_code.unwrap(), 0, "Failed target should have non-zero exit code");
+        assert_ne!(
+            exit_code.unwrap(),
+            0,
+            "Failed target should have non-zero exit code"
+        );
 
         std::fs::remove_dir_all(&dir).ok();
     }

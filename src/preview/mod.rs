@@ -1,9 +1,9 @@
-use std::path::Path;
 use crate::app::state::{FileEntry, PreviewState};
+use std::path::Path;
 
-pub mod text;
 pub mod binary;
 pub mod makefile;
+pub mod text;
 
 const MAX_PREVIEW_SIZE: u64 = 10 * 1024 * 1024; // 10MB
 
@@ -60,5 +60,8 @@ fn load_directory_preview(path: &Path) -> PreviewState {
         }
     }
 
-    PreviewState::Directory { entry_count, total_size }
+    PreviewState::Directory {
+        entry_count,
+        total_size,
+    }
 }

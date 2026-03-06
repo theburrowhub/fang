@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use std::os::unix::fs::PermissionsExt;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileType {
@@ -39,7 +39,9 @@ impl FileEntry {
         let is_symlink = metadata.file_type().is_symlink();
         let is_dir = if is_symlink {
             // Para symlinks, sigue el target para ver si es dir
-            std::fs::metadata(&path).map(|m| m.is_dir()).unwrap_or(false)
+            std::fs::metadata(&path)
+                .map(|m| m.is_dir())
+                .unwrap_or(false)
         } else {
             metadata.is_dir()
         };
@@ -50,8 +52,7 @@ impl FileEntry {
         // to_string_lossy() returns a Cow<str>; to_lowercase() produces a String
         // directly, so no further conversion is needed.
         let extension: Option<String> = if !is_dir {
-            path.extension()
-                .map(|e| e.to_string_lossy().to_lowercase())
+            path.extension().map(|e| e.to_string_lossy().to_lowercase())
         } else {
             None
         };
@@ -73,7 +74,12 @@ impl FileEntry {
     }
 }
 
-fn classify_file(is_dir: bool, is_symlink: bool, is_executable: bool, ext: Option<&str>) -> FileType {
+fn classify_file(
+    is_dir: bool,
+    is_symlink: bool,
+    is_executable: bool,
+    ext: Option<&str>,
+) -> FileType {
     if is_symlink {
         return FileType::Symlink;
     }
@@ -87,48 +93,15 @@ fn classify_file(is_dir: bool, is_symlink: bool, is_executable: bool, ext: Optio
         Some("mp3") | Some("wav") | Some("flac") | Some("ogg") | Some("aac") => FileType::Audio,
         Some("zip") | Some("tar") | Some("gz") | Some("bz2") | Some("7z") | Some("rar")
         | Some("xz") => FileType::Archive,
-        Some("pdf") | Some("doc") | Some("docx") | Some("odt") | Some("epub") => {
-            FileType::Document
-        }
-        Some("rs")
-        | Some("py")
-        | Some("js")
-        | Some("ts")
-        | Some("go")
-        | Some("c")
-        | Some("cpp")
-        | Some("h")
-        | Some("java")
-        | Some("rb")
-        | Some("php")
-        | Some("swift")
-        | Some("kt")
-        | Some("scala")
-        | Some("hs")
-        | Some("lua")
-        | Some("r")
-        | Some("jl")
-        | Some("ex")
-        | Some("exs")
-        | Some("erl")
-        | Some("ml")
-        | Some("clj")
-        | Some("cs")
-        | Some("fs")
-        | Some("vb") => FileType::Code,
-        Some("toml")
-        | Some("yaml")
-        | Some("yml")
-        | Some("json")
-        | Some("xml")
-        | Some("ini")
-        | Some("cfg")
-        | Some("conf")
-        | Some("env")
-        | Some("editorconfig")
-        | Some("gitignore")
-        | Some("dockerignore")
-        | Some("dockerfile") => FileType::Config,
+        Some("pdf") | Some("doc") | Some("docx") | Some("odt") | Some("epub") => FileType::Document,
+        Some("rs") | Some("py") | Some("js") | Some("ts") | Some("go") | Some("c")
+        | Some("cpp") | Some("h") | Some("java") | Some("rb") | Some("php") | Some("swift")
+        | Some("kt") | Some("scala") | Some("hs") | Some("lua") | Some("r") | Some("jl")
+        | Some("ex") | Some("exs") | Some("erl") | Some("ml") | Some("clj") | Some("cs")
+        | Some("fs") | Some("vb") => FileType::Code,
+        Some("toml") | Some("yaml") | Some("yml") | Some("json") | Some("xml") | Some("ini")
+        | Some("cfg") | Some("conf") | Some("env") | Some("editorconfig") | Some("gitignore")
+        | Some("dockerignore") | Some("dockerfile") => FileType::Config,
         _ if is_executable => FileType::Executable,
         _ => FileType::Unknown,
     }
@@ -206,14 +179,26 @@ mod tests {
 
     #[test]
     fn test_classify_code() {
-        assert_eq!(classify_file(false, false, false, Some("rs")), FileType::Code);
-        assert_eq!(classify_file(false, false, false, Some("py")), FileType::Code);
+        assert_eq!(
+            classify_file(false, false, false, Some("rs")),
+            FileType::Code
+        );
+        assert_eq!(
+            classify_file(false, false, false, Some("py")),
+            FileType::Code
+        );
     }
 
     #[test]
     fn test_classify_image() {
-        assert_eq!(classify_file(false, false, false, Some("png")), FileType::Image);
-        assert_eq!(classify_file(false, false, false, Some("jpg")), FileType::Image);
+        assert_eq!(
+            classify_file(false, false, false, Some("png")),
+            FileType::Image
+        );
+        assert_eq!(
+            classify_file(false, false, false, Some("jpg")),
+            FileType::Image
+        );
     }
 
     #[test]

@@ -1,9 +1,9 @@
+use crate::app::state::{AppState, FocusedPanel, PreviewState, StyledLine};
+use crate::ui::utils::{format_size_verbose, panel_border_style};
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
-use crate::app::state::{AppState, FocusedPanel, PreviewState, StyledLine};
-use crate::ui::utils::{format_size_verbose, panel_border_style};
 
 /// Convert a StyledLine into a ratatui Line, padded to `width` so every cell
 /// in the row is explicitly written (prevents old content bleeding through).
@@ -45,7 +45,10 @@ fn render_centered_msg(
     msg_color: Color,
 ) {
     let block = Block::default()
-        .title(Span::styled(title.to_owned(), Style::default().fg(Color::White)))
+        .title(Span::styled(
+            title.to_owned(),
+            Style::default().fg(Color::White),
+        ))
         .borders(Borders::ALL)
         .border_style(border_style);
     let inner = block.inner(area);
@@ -57,18 +60,16 @@ fn render_centered_msg(
     // Then render the message centered.
     let top_pad = inner.height / 2;
     let mut lines = vec![Line::from(""); top_pad as usize];
-    lines.push(Line::from(Span::styled(msg, Style::default().fg(msg_color))));
+    lines.push(Line::from(Span::styled(
+        msg,
+        Style::default().fg(msg_color),
+    )));
     let para = Paragraph::new(lines).alignment(Alignment::Center);
     frame.render_widget(para, inner);
 }
 
 /// Render a titled block, blank-fill its inner area, and return the inner rect.
-fn render_block(
-    frame: &mut Frame,
-    area: Rect,
-    border_style: Style,
-    title: String,
-) -> Rect {
+fn render_block(frame: &mut Frame, area: Rect, border_style: Style, title: String) -> Rect {
     let block = Block::default()
         .title(Span::styled(title, Style::default().fg(Color::White)))
         .borders(Borders::ALL)
@@ -90,7 +91,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     match &state.preview_state {
         PreviewState::None => {
             render_centered_msg(
-                frame, area, border_style,
+                frame,
+                area,
+                border_style,
                 " Preview ",
                 "Select a file to preview",
                 Color::DarkGray,
@@ -99,7 +102,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
 
         PreviewState::Loading => {
             render_centered_msg(
-                frame, area, border_style,
+                frame,
+                area,
+                border_style,
                 " Preview ",
                 "Loading...",
                 Color::DarkGray,
@@ -134,7 +139,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         PreviewState::Binary { size, mime_hint } => {
             let hint_str = mime_hint.as_str();
             let inner = render_block(
-                frame, area, border_style,
+                frame,
+                area,
+                border_style,
                 format!(" Binary File ({}) ", hint_str),
             );
 
@@ -145,7 +152,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                 ]),
                 Line::from(vec![
                     Span::styled("Size:  ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(format_size_verbose(*size), Style::default().fg(Color::White)),
+                    Span::styled(
+                        format_size_verbose(*size),
+                        Style::default().fg(Color::White),
+                    ),
                 ]),
                 Line::from(""),
                 Line::from(Span::styled(
@@ -156,7 +166,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             frame.render_widget(Paragraph::new(text), inner);
         }
 
-        PreviewState::Directory { entry_count, total_size } => {
+        PreviewState::Directory {
+            entry_count,
+            total_size,
+        } => {
             let inner = render_block(frame, area, border_style, " Directory Info ".to_owned());
 
             let text = vec![
@@ -164,12 +177,17 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                     Span::styled("Entries:     ", Style::default().fg(Color::DarkGray)),
                     Span::styled(
                         entry_count.to_string(),
-                        Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(Color::Blue)
+                            .add_modifier(Modifier::BOLD),
                     ),
                 ]),
                 Line::from(vec![
                     Span::styled("Total size:  ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(format_size_verbose(*total_size), Style::default().fg(Color::White)),
+                    Span::styled(
+                        format_size_verbose(*total_size),
+                        Style::default().fg(Color::White),
+                    ),
                 ]),
             ];
             frame.render_widget(Paragraph::new(text), inner);

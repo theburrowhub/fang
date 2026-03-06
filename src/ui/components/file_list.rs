@@ -1,9 +1,9 @@
+use crate::app::state::{AppMode, AppState, FileEntry, FocusedPanel};
+use crate::ui::utils::{format_size_compact, panel_border_style};
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, List, ListItem, ListState},
 };
-use crate::app::state::{AppState, AppMode, FocusedPanel, FileEntry};
-use crate::ui::utils::{format_size_compact, panel_border_style};
 
 /// Return an icon prefix and style for a file entry.
 fn entry_style(entry: &FileEntry) -> (&'static str, Style) {

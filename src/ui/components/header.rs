@@ -1,5 +1,5 @@
-use ratatui::{prelude::*, widgets::Paragraph};
 use crate::app::state::AppState;
+use ratatui::{prelude::*, widgets::Paragraph};
 
 /// Renders a 1-line header with app name, git branch badge, and dev env badges.
 ///
@@ -14,7 +14,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     // ── Left section: app name + badges ─────────────────────────────────────
     let mut left_spans: Vec<Span<'_>> = vec![
         Span::raw(" "),
-        Span::styled("fang", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "fang",
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        ),
         Span::raw("  "),
     ];
 
@@ -51,7 +54,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     if padding > 0 {
         spans.push(Span::raw(" ".repeat(padding)));
     }
-    spans.push(Span::styled(right_text, Style::default().fg(Color::DarkGray)));
+    spans.push(Span::styled(
+        right_text,
+        Style::default().fg(Color::DarkGray),
+    ));
 
     frame.render_widget(
         Paragraph::new(Line::from(spans)).style(Style::default().bg(Color::Reset)),

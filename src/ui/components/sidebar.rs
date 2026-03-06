@@ -1,14 +1,15 @@
+use crate::app::state::{AppState, FocusedPanel};
+use crate::ui::utils::panel_border_style;
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, List, ListItem, ListState},
 };
-use crate::app::state::{AppState, FocusedPanel};
-use crate::ui::utils::panel_border_style;
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let border_style = panel_border_style(state.focused_panel == FocusedPanel::Sidebar);
 
-    let dir_name = state.current_dir
+    let dir_name = state
+        .current_dir
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("/");
@@ -31,7 +32,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                     let is_selected = i == state.sidebar_selected;
                     let indent = "  ".repeat(node.depth);
                     let icon = if node.is_dir {
-                        if node.is_expanded { "\u{25BC} " } else { "\u{25B6} " }
+                        if node.is_expanded {
+                            "\u{25BC} "
+                        } else {
+                            "\u{25B6} "
+                        }
                     } else {
                         "\u{00B7} "
                     };
@@ -73,9 +78,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                 .filter_map(|c| match c {
                     Component::RootDir => Some("/".to_string()),
                     Component::Normal(s) => Some(s.to_str().unwrap_or("?").to_string()),
-                    Component::Prefix(p) => {
-                        Some(p.as_os_str().to_str().unwrap_or("?").to_string())
-                    }
+                    Component::Prefix(p) => Some(p.as_os_str().to_str().unwrap_or("?").to_string()),
                     _ => None,
                 })
                 .collect();
@@ -102,7 +105,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                     ListItem::new(line)
                 })
                 .collect();
-            let selected = if total > 0 { Some(total.saturating_sub(1)) } else { None };
+            let selected = if total > 0 {
+                Some(total.saturating_sub(1))
+            } else {
+                None
+            };
             (items, selected)
         };
 
