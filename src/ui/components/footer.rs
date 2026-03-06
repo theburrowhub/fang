@@ -87,7 +87,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     } else {
         let mut s = Vec::new();
         for b in bindings {
-            s.extend(key_hint(b.key, b.description));
+            // Use the compact `short` label in the footer; full `description` is in Help.
+            s.extend(key_hint(b.key, b.short));
         }
         s
     };
