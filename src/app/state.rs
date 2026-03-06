@@ -103,6 +103,11 @@ pub enum AppMode {
         name: String,
         from_clipboard: bool,
     },
+    /// Full-screen help overlay (opened with `h`).
+    Help {
+        /// Vertical scroll offset.
+        scroll: usize,
+    },
     /// Settings editor (opened with Ctrl+S).
     Settings {
         selected: usize,

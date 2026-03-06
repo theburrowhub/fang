@@ -17,6 +17,12 @@ pub fn draw(frame: &mut Frame, state: &AppState) {
     components::header::render(frame, header_area, state);
     components::footer::render(frame, footer_area, state);
 
+    // Full-screen Help overlay
+    if let AppMode::Help { scroll } = state.mode {
+        components::help::render(frame, area, scroll);
+        return;
+    }
+
     // If settings modal is active, render main + settings overlay
     if matches!(state.mode, AppMode::Settings { .. }) {
         render_main_panels(frame, main_area, state);

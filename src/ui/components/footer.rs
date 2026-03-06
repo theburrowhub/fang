@@ -1,3 +1,11 @@
+//! Footer — one-line bar at the bottom of the screen.
+//!
+//! Prompt modes (CommandInput, ExternalCommand, NewFile) replace the bar with
+//! a vim-style inline prompt. All other modes render hints from
+//! [`crate::app::keybindings::footer_bindings`] — the single source of truth
+//! for key bindings, so the footer stays in sync automatically.
+
+use crate::app::keybindings;
 use crate::app::state::{AppMode, AppState};
 use crate::ui::utils::key_hint;
 use ratatui::{prelude::*, widgets::Paragraph};
@@ -6,7 +14,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     if area.height == 0 {
         return;
     }
-
     let line_area = Rect {
         x: area.x,
         y: area.y,
@@ -14,8 +21,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         height: 1,
     };
 
-    // CommandInput / ExternalCommand: show a vim-style prompt on the footer line.
-    let prompt_line: Option<Line<'_>> = match &state.mode {
+    // ── Prompt modes: show an inline input line ───────────────────────────
+    let prompt: Option<Line<'_>> = match &state.mode {
         AppMode::CommandInput { cmd } => Some(Line::from(vec![
             Span::styled(
                 ": ",
@@ -58,7 +65,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         }
         _ => None,
     };
-    if let Some(line) = prompt_line {
+
+    if let Some(line) = prompt {
         frame.render_widget(
             Paragraph::new(line).style(Style::default().bg(Color::Reset)),
             line_area,
@@ -66,55 +74,41 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         return;
     }
 
-    // Line 1: keybindings — varies by mode
-    let keybinding_spans: Vec<Span<'_>> = match &state.mode {
-        AppMode::Normal => {
-            let mut s = Vec::new();
-            s.extend(key_hint("j/k", "Nav"));
-            s.extend(key_hint("h", "Up"));
-            s.extend(key_hint("l", "Enter"));
-            s.extend(key_hint("/", "Search"));
-            s.extend(key_hint(":", "Cmd"));
-            s.extend(key_hint("^S", "Settings"));
-            s.extend(key_hint(";", "Split"));
-            s.extend(key_hint("m", "Make"));
-            s.extend(key_hint("g", "Git"));
-            s.extend(key_hint("o", "Open"));
-            s.extend(key_hint("n", "New"));
-            s.extend(key_hint("Tab", "Panel"));
-            s.extend(key_hint("q", "Quit"));
-            s
+    // ── Hint bar: derived from keybindings registry ───────────────────────
+    let mode_name = mode_str(&state.mode);
+    let bindings = keybindings::footer_bindings(mode_name);
+
+    let spans: Vec<Span<'_>> = if bindings.is_empty() {
+        // Fallback for modes not listed in the registry
+        vec![Span::styled(
+            format!(" {} mode", mode_name),
+            Style::default().fg(Color::DarkGray),
+        )]
+    } else {
+        let mut s = Vec::new();
+        for b in bindings {
+            s.extend(key_hint(b.key, b.description));
         }
-        AppMode::Search { .. } => {
-            let mut s = Vec::new();
-            s.extend(key_hint("Enter", "Select"));
-            s.extend(key_hint("Esc", "Cancel"));
-            s.extend(key_hint("\u{2191}\u{2193}", "Navigate"));
-            s
-        }
-        AppMode::MakeTarget => {
-            let mut s = Vec::new();
-            s.extend(key_hint("Enter", "Run"));
-            s.extend(key_hint("Esc", "Cancel"));
-            s.extend(key_hint("j/k", "Navigate"));
-            s
-        }
-        AppMode::GitMenu { .. } => {
-            let mut s = Vec::new();
-            s.extend(key_hint("Enter", "Run"));
-            s.extend(key_hint("Esc", "Cancel"));
-            s.extend(key_hint("j/k", "Navigate"));
-            s
-        }
-        // CommandInput / ExternalCommand / NewFile handled above via early return.
-        AppMode::CommandInput { .. }
-        | AppMode::ExternalCommand { .. }
-        | AppMode::NewFile { .. }
-        | AppMode::Settings { .. } => vec![], // handled by settings_modal
+        s
     };
 
     frame.render_widget(
-        Paragraph::new(Line::from(keybinding_spans)).style(Style::default().bg(Color::Reset)),
+        Paragraph::new(Line::from(spans)).style(Style::default().bg(Color::Reset)),
         line_area,
     );
+}
+
+/// Map `AppMode` to the mode name used in the keybindings registry.
+fn mode_str(mode: &AppMode) -> &'static str {
+    match mode {
+        AppMode::Normal => "Normal",
+        AppMode::Search { .. } => "Search",
+        AppMode::MakeTarget => "Make",
+        AppMode::GitMenu { .. } => "Git",
+        AppMode::CommandInput { .. } => "Command", // handled by prompt above
+        AppMode::ExternalCommand { .. } => "Split", // handled by prompt above
+        AppMode::NewFile { .. } => "NewFile",      // handled by prompt above
+        AppMode::Settings { .. } => "Settings",
+        AppMode::Help { .. } => "Help",
+    }
 }
