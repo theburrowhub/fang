@@ -51,6 +51,11 @@ pub enum Action {
     SettingsIncrease,
     SettingsDecrease,
     CloseSettings,
+    // Help panel
+    OpenHelp,
+    CloseHelp,
+    HelpScrollUp,
+    HelpScrollDown,
     Noop,
 }
 
@@ -75,7 +80,9 @@ pub fn map_key_to_action(
             }
             KeyCode::Char('j') | KeyCode::Down => Action::NavDown,
             KeyCode::Char('k') | KeyCode::Up => Action::NavUp,
-            KeyCode::Char('h') | KeyCode::Left | KeyCode::Backspace => Action::NavLeft,
+            // 'h' opens Help; 'u' (and arrow/backspace) go to parent directory.
+            KeyCode::Char('h') => Action::OpenHelp,
+            KeyCode::Char('u') | KeyCode::Left | KeyCode::Backspace => Action::NavLeft,
             KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => Action::NavRight,
             KeyCode::Char('/') => Action::OpenSearch,
             KeyCode::Char('m') | KeyCode::Char('M') => Action::OpenMakeModal,
@@ -149,6 +156,15 @@ pub fn map_key_to_action(
             KeyCode::Char(c) => Action::NewFileChar(c),
             _ => Action::Noop,
         },
+        AppMode::Help { .. } => match key.code {
+            KeyCode::Char('h') | KeyCode::Esc | KeyCode::Char('q') => Action::CloseHelp,
+            KeyCode::Char('j') | KeyCode::Down => Action::HelpScrollDown,
+            KeyCode::Char('k') | KeyCode::Up => Action::HelpScrollUp,
+            KeyCode::PageDown => Action::HelpScrollDown,
+            KeyCode::PageUp => Action::HelpScrollUp,
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
+            _ => Action::Noop,
+        },
         AppMode::Settings { .. } => match key.code {
             KeyCode::Esc | KeyCode::Enter => Action::CloseSettings,
             KeyCode::Char('j') | KeyCode::Down => Action::SettingsNavDown,
@@ -204,9 +220,18 @@ mod tests {
             ),
             Action::NavUp
         ));
+        // 'h' now opens Help; 'u' navigates up to parent directory
         assert!(matches!(
             map_key_to_action(
                 &key(KeyCode::Char('h')),
+                &AppMode::Normal,
+                &crate::app::state::FocusedPanel::FileList
+            ),
+            Action::OpenHelp
+        ));
+        assert!(matches!(
+            map_key_to_action(
+                &key(KeyCode::Char('u')),
                 &AppMode::Normal,
                 &crate::app::state::FocusedPanel::FileList
             ),

@@ -685,6 +685,24 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
                 }
             });
         }
+        // ── Help panel ────────────────────────────────────────────────────────
+        Action::OpenHelp => {
+            state.mode = app::state::AppMode::Help { scroll: 0 };
+        }
+        Action::CloseHelp => {
+            state.mode = app::state::AppMode::Normal;
+        }
+        Action::HelpScrollDown => {
+            if let app::state::AppMode::Help { scroll } = &mut state.mode {
+                let max = ui::components::help::content_line_count().saturating_sub(20);
+                *scroll = (*scroll + 3).min(max);
+            }
+        }
+        Action::HelpScrollUp => {
+            if let app::state::AppMode::Help { scroll } = &mut state.mode {
+                *scroll = scroll.saturating_sub(3);
+            }
+        }
         // ── Settings ─────────────────────────────────────────────────────────
         Action::OpenSettings => {
             let entries = config::entries_from_config(&state.config);
