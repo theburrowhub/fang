@@ -710,17 +710,20 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
         Action::SettingsIncrease => {
             if let app::state::AppMode::Settings { selected, entries } = &mut state.mode {
                 if let Some(e) = entries.get_mut(*selected) {
-                    let max = e.max;
-                    e.value.increment(max);
+                    e.increment();
                 }
+                // Apply to config so preview_pct is recomputed
+                config::apply_entries(&mut state.config, entries);
+                config::refresh_derived(entries, &state.config);
             }
         }
         Action::SettingsDecrease => {
             if let app::state::AppMode::Settings { selected, entries } = &mut state.mode {
                 if let Some(e) = entries.get_mut(*selected) {
-                    let min = e.min;
-                    e.value.decrement(min);
+                    e.decrement();
                 }
+                config::apply_entries(&mut state.config, entries);
+                config::refresh_derived(entries, &state.config);
             }
         }
         Action::CloseSettings => {

@@ -45,34 +45,50 @@ fn render_main_panels(frame: &mut Frame, area: Rect, state: &AppState) {
     let width = area.width;
 
     if !state.sidebar_visible || width < 80 {
+        // No sidebar: redistribute sidebar share into preview so the ratio
+        // file_list : preview is preserved.
+        let s = state.config.layout.sidebar_pct as u32;
+        let l = state.config.layout.file_list_pct as u32;
+        let p = state.config.layout.preview_pct() as u32;
+        // Scale l and p to fill 100 % without the sidebar
+        let lp = l + p;
+        let l2 = if lp > 0 { l * 100 / lp } else { 33 };
+
         if !state.preview_visible || width < 50 {
-            // Only file list
             components::file_list::render(frame, area, state);
         } else {
-            // file_list + preview
             let [list_area, preview_area] =
-                Layout::horizontal([Constraint::Percentage(33), Constraint::Percentage(67)])
+                Layout::horizontal([Constraint::Percentage(l2 as u16), Constraint::Min(0)])
                     .areas(area);
             components::file_list::render(frame, list_area, state);
             components::preview::render(frame, preview_area, state);
         }
+        let _ = s; // suppress warning when sidebar is hidden
     } else {
-        // sidebar + file_list + preview
+        // sidebar + file_list (+ optional preview) — all three in %.
+        let s = state.config.layout.sidebar_pct as u32;
+        let l = state.config.layout.file_list_pct as u32;
+        let p = state.config.layout.preview_pct() as u32;
+
         if state.preview_visible {
             let [sidebar_area, list_area, preview_area] = Layout::horizontal([
-                Constraint::Length(22),
-                Constraint::Percentage(22),
-                Constraint::Min(0),
+                Constraint::Percentage(s as u16),
+                Constraint::Percentage(l as u16),
+                Constraint::Percentage(p as u16),
             ])
             .areas(area);
             components::sidebar::render(frame, sidebar_area, state);
             components::file_list::render(frame, list_area, state);
             components::preview::render(frame, preview_area, state);
         } else {
+            // No preview: sidebar keeps its %, file_list takes the rest.
             let [sidebar_area, list_area] =
-                Layout::horizontal([Constraint::Length(22), Constraint::Min(0)]).areas(area);
+                Layout::horizontal([Constraint::Percentage(s as u16), Constraint::Min(0)])
+                    .areas(area);
             components::sidebar::render(frame, sidebar_area, state);
             components::file_list::render(frame, list_area, state);
+            let _ = l;
+            let _ = p;
         }
     }
 }
