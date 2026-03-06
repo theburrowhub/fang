@@ -70,6 +70,8 @@ pub fn all_bindings() -> Vec<KeyBinding> {
         KeyBinding::footer("Normal", ";", "Open in terminal split", "Split"),
         KeyBinding::footer("Normal", "m", "Makefile targets", "Make"),
         KeyBinding::footer("Normal", "g", "Git operations", "Git"),
+        KeyBinding::footer("Normal", "c", "Copy relative path to clipboard", "Copy rel"),
+        KeyBinding::footer("Normal", "C", "Copy absolute path to clipboard", "Copy abs"),
         KeyBinding::footer("Normal", "o", "Open with default app", "Open"),
         KeyBinding::footer("Normal", "n", "New empty file", "New"),
         KeyBinding::help_only("Normal", "N", "New file from clipboard"),
