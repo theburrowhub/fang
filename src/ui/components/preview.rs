@@ -7,18 +7,41 @@ use ratatui::{
 
 /// Convert a StyledLine into a ratatui Line, padded to `width` so every cell
 /// in the row is explicitly written (prevents old content bleeding through).
+/// Build a `Line` from `sl` that is exactly `width` cells wide:
+/// - Lines shorter than `width` are padded with trailing spaces so every
+///   cell in the row is explicitly written (prevents stale cell artefacts).
+/// - Lines longer than `width` are **clipped** at the right edge so they
+///   cannot overflow into adjacent panels.
 fn styled_line_to_line_padded(sl: &StyledLine, width: usize) -> Line<'static> {
-    let mut spans: Vec<Span<'static>> = sl
-        .spans
-        .iter()
-        .map(|(style, text)| Span::styled(text.clone(), *style))
-        .collect();
-    // Measure rendered width to know how many trailing spaces to add.
-    let rendered_width: usize = sl.spans.iter().map(|(_, t)| t.chars().count()).sum();
-    if rendered_width < width {
-        spans.push(Span::raw(" ".repeat(width - rendered_width)));
+    if width == 0 {
+        return Line::from(vec![]);
     }
-    Line::from(spans)
+
+    let mut result: Vec<Span<'static>> = Vec::new();
+    let mut remaining = width; // columns still available
+
+    for (style, text) in &sl.spans {
+        if remaining == 0 {
+            break;
+        }
+        let chars: Vec<char> = text.chars().collect();
+        if chars.len() <= remaining {
+            result.push(Span::styled(text.clone(), *style));
+            remaining -= chars.len();
+        } else {
+            // Clip this span at the panel boundary
+            let clipped: String = chars[..remaining].iter().collect();
+            result.push(Span::styled(clipped, *style));
+            remaining = 0;
+        }
+    }
+
+    // Pad any remaining space so the full row is written
+    if remaining > 0 {
+        result.push(Span::raw(" ".repeat(remaining)));
+    }
+
+    Line::from(result)
 }
 
 /// Fill every cell in `area` with a space using default style.
