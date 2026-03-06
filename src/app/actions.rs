@@ -51,6 +51,16 @@ pub enum Action {
     SettingsIncrease,
     SettingsDecrease,
     CloseSettings,
+    // Git form (second screen) — opened internally; here for completeness
+    #[allow(dead_code)]
+    OpenGitForm,
+    GitFormTabNext,
+    GitFormTabPrev,
+    GitFormToggle,
+    GitFormChar(char),
+    GitFormBackspace,
+    RunGitForm,
+    CloseGitForm,
     // Help panel
     OpenHelp,
     CloseHelp,
@@ -154,6 +164,17 @@ pub fn map_key_to_action(
             KeyCode::Backspace => Action::NewFileBackspace,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
             KeyCode::Char(c) => Action::NewFileChar(c),
+            _ => Action::Noop,
+        },
+        AppMode::GitForm { .. } => match key.code {
+            KeyCode::Esc => Action::CloseGitForm,
+            KeyCode::Enter => Action::RunGitForm,
+            KeyCode::Tab => Action::GitFormTabNext,
+            KeyCode::BackTab => Action::GitFormTabPrev,
+            KeyCode::Char(' ') => Action::GitFormToggle,
+            KeyCode::Backspace => Action::GitFormBackspace,
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
+            KeyCode::Char(ch) => Action::GitFormChar(ch),
             _ => Action::Noop,
         },
         AppMode::Help { .. } => match key.code {

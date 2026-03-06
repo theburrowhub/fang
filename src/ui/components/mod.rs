@@ -1,5 +1,6 @@
 pub mod file_list;
 pub mod footer;
+pub mod git_form;
 pub mod git_modal;
 pub mod header;
 pub mod help;

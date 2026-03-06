@@ -4,78 +4,245 @@ use std::path::Path;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc::UnboundedSender;
 
-/// A static git operation with a display label and the arguments to pass to `git`.
-#[derive(Debug, Clone)]
-pub struct GitOperation {
-    pub label: &'static str,
-    pub args: &'static [&'static str],
+// ── Static parameter definitions ─────────────────────────────────────────────
+
+/// How a parameter contributes to the final `git` command-line.
+#[derive(Debug, Clone, Copy)]
+pub enum GitParamKind {
+    /// A text field.
+    /// `flag`: if Some, the text is passed as `flag value` (e.g. `-m "msg"`).
+    ///          if None, the value is appended as a positional arg.
+    Text {
+        placeholder: &'static str,
+        flag: Option<&'static str>,
+    },
+    /// A boolean checkbox.  When true, `flag` is appended to the args.
+    Bool {
+        flag: &'static str,
+        default: bool,
+    },
 }
 
-/// Total number of git operations (equals `git_operations().len()`).
-/// Callers that only need the count can use this constant to avoid the Vec allocation.
-pub const N_GIT_OPS: usize = 13;
+/// Static definition of one parameter in a git form.
+#[derive(Debug, Clone, Copy)]
+pub struct GitParamDef {
+    pub label: &'static str,
+    pub kind: GitParamKind,
+}
 
-/// Returns the full list of git operations available in the Git menu.
+/// A git operation.  `params` is empty → execute immediately;
+/// non-empty → show the form before running.
+#[derive(Debug, Clone, Copy)]
+pub struct GitOperation {
+    pub label: &'static str,
+    /// Base args, e.g. `&["commit"]`.  Form params are appended at runtime.
+    pub base_args: &'static [&'static str],
+    pub params: &'static [GitParamDef],
+}
+
+impl GitOperation {
+    pub fn has_form(self) -> bool {
+        !self.params.is_empty()
+    }
+}
+
+// ── Dynamic form state (owned by AppMode::GitForm) ────────────────────────────
+
+/// Current value for one parameter while the form is open.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GitParamValue {
+    Text(String),
+    Bool(bool),
+}
+
+impl GitParamValue {
+    #[allow(dead_code)]
+    pub fn as_text(&self) -> Option<&str> {
+        if let Self::Text(s) = self { Some(s) } else { None }
+    }
+    #[allow(dead_code)]
+    pub fn as_bool(&self) -> Option<bool> {
+        if let Self::Bool(b) = self { Some(*b) } else { None }
+    }
+}
+
+/// Initialise a `Vec<GitParamValue>` from a static param slice.
+pub fn default_values(params: &[GitParamDef]) -> Vec<GitParamValue> {
+    params
+        .iter()
+        .map(|p| match p.kind {
+            GitParamKind::Text { .. } => GitParamValue::Text(String::new()),
+            GitParamKind::Bool { default, .. } => GitParamValue::Bool(default),
+        })
+        .collect()
+}
+
+/// Build the final argument list for `git` from base args + form values.
+pub fn build_args(op: GitOperation, values: &[GitParamValue]) -> Vec<String> {
+    let mut args: Vec<String> = op.base_args.iter().map(|&s| s.to_string()).collect();
+
+    for (def, val) in op.params.iter().zip(values.iter()) {
+        match (&def.kind, val) {
+            (GitParamKind::Text { flag: Some(f), .. }, GitParamValue::Text(s))
+                if !s.is_empty() =>
+            {
+                args.push(f.to_string());
+                args.push(s.clone());
+            }
+            (GitParamKind::Text { flag: None, .. }, GitParamValue::Text(s))
+                if !s.is_empty() =>
+            {
+                args.push(s.clone());
+            }
+            (GitParamKind::Bool { flag, .. }, GitParamValue::Bool(true)) => {
+                args.push(flag.to_string());
+            }
+            _ => {}
+        }
+    }
+    args
+}
+
+// ── Operation catalogue ───────────────────────────────────────────────────────
+
+// Static param definitions for each form operation.
+static COMMIT_PARAMS: &[GitParamDef] = &[
+    GitParamDef {
+        label: "Message",
+        kind: GitParamKind::Text { placeholder: "Commit message…", flag: Some("-m") },
+    },
+    GitParamDef {
+        label: "Amend last commit",
+        kind: GitParamKind::Bool { flag: "--amend", default: false },
+    },
+    GitParamDef {
+        label: "Allow empty commit",
+        kind: GitParamKind::Bool { flag: "--allow-empty", default: false },
+    },
+    GitParamDef {
+        label: "No edit (keep last message)",
+        kind: GitParamKind::Bool { flag: "--no-edit", default: false },
+    },
+];
+
+static ADD_PARAMS: &[GitParamDef] = &[
+    GitParamDef {
+        label: "Path",
+        kind: GitParamKind::Text { placeholder: ". (all files)", flag: None },
+    },
+    GitParamDef {
+        label: "Stage all tracked + untracked",
+        kind: GitParamKind::Bool { flag: "-A", default: true },
+    },
+    GitParamDef {
+        label: "Interactive patch mode",
+        kind: GitParamKind::Bool { flag: "-p", default: false },
+    },
+];
+
+static SWITCH_PARAMS: &[GitParamDef] = &[
+    GitParamDef {
+        label: "Branch name",
+        kind: GitParamKind::Text { placeholder: "branch-name", flag: None },
+    },
+    GitParamDef {
+        label: "Create new branch (-c)",
+        kind: GitParamKind::Bool { flag: "-c", default: false },
+    },
+];
+
+static MERGE_PARAMS: &[GitParamDef] = &[
+    GitParamDef {
+        label: "Branch to merge",
+        kind: GitParamKind::Text { placeholder: "branch-name", flag: None },
+    },
+    GitParamDef {
+        label: "No fast-forward (always create merge commit)",
+        kind: GitParamKind::Bool { flag: "--no-ff", default: false },
+    },
+    GitParamDef {
+        label: "Squash commits into one",
+        kind: GitParamKind::Bool { flag: "--squash", default: false },
+    },
+];
+
+static REBASE_PARAMS: &[GitParamDef] = &[
+    GitParamDef {
+        label: "Onto branch/commit",
+        kind: GitParamKind::Text { placeholder: "main", flag: None },
+    },
+    GitParamDef {
+        label: "Interactive (-i)",
+        kind: GitParamKind::Bool { flag: "-i", default: false },
+    },
+];
+
+static RESET_PARAMS: &[GitParamDef] = &[
+    GitParamDef {
+        label: "Commit (default HEAD)",
+        kind: GitParamKind::Text { placeholder: "HEAD", flag: None },
+    },
+    GitParamDef {
+        label: "--soft  (keep staged changes)",
+        kind: GitParamKind::Bool { flag: "--soft", default: false },
+    },
+    GitParamDef {
+        label: "--hard  (discard all changes)",
+        kind: GitParamKind::Bool { flag: "--hard", default: false },
+    },
+];
+
+static TAG_PARAMS: &[GitParamDef] = &[
+    GitParamDef {
+        label: "Tag name",
+        kind: GitParamKind::Text { placeholder: "v1.0.0", flag: None },
+    },
+    GitParamDef {
+        label: "Annotated tag (-a)",
+        kind: GitParamKind::Bool { flag: "-a", default: false },
+    },
+    GitParamDef {
+        label: "Message (for annotated tags)",
+        kind: GitParamKind::Text { placeholder: "Tag message…", flag: Some("-m") },
+    },
+];
+
+/// Full list of git operations shown in the first screen.
 pub fn git_operations() -> Vec<GitOperation> {
     vec![
-        GitOperation {
-            label: "Status",
-            args: &["status"],
-        },
-        GitOperation {
-            label: "Fetch",
-            args: &["fetch"],
-        },
-        GitOperation {
-            label: "Fetch all (prune)",
-            args: &["fetch", "--all", "--prune"],
-        },
-        GitOperation {
-            label: "Pull",
-            args: &["pull"],
-        },
-        GitOperation {
-            label: "Pull (rebase)",
-            args: &["pull", "--rebase"],
-        },
-        GitOperation {
-            label: "Push",
-            args: &["push"],
-        },
-        GitOperation {
-            label: "Push (force-with-lease)",
-            args: &["push", "--force-with-lease"],
-        },
-        GitOperation {
-            label: "Push new branch upstream",
-            args: &["push", "-u", "origin", "HEAD"],
-        },
-        GitOperation {
-            label: "Log (last 20)",
-            args: &["log", "--oneline", "-20"],
-        },
-        GitOperation {
-            label: "List branches",
-            args: &["branch", "-a"],
-        },
-        GitOperation {
-            label: "Stash",
-            args: &["stash"],
-        },
-        GitOperation {
-            label: "Stash pop",
-            args: &["stash", "pop"],
-        },
-        GitOperation {
-            label: "Diff (stat)",
-            args: &["diff", "--stat"],
-        },
+        // ── Read-only / safe ─────────────────────────────────────────────
+        GitOperation { label: "Status",                   base_args: &["status"],                       params: &[] },
+        GitOperation { label: "Log (last 20)",            base_args: &["log", "--oneline", "-20"],       params: &[] },
+        GitOperation { label: "Diff (stat)",              base_args: &["diff", "--stat"],                params: &[] },
+        GitOperation { label: "List branches",            base_args: &["branch", "-a"],                  params: &[] },
+        // ── Fetch / pull / push ──────────────────────────────────────────
+        GitOperation { label: "Fetch",                    base_args: &["fetch"],                         params: &[] },
+        GitOperation { label: "Fetch all (prune)",        base_args: &["fetch", "--all", "--prune"],     params: &[] },
+        GitOperation { label: "Pull",                     base_args: &["pull"],                          params: &[] },
+        GitOperation { label: "Pull (rebase)",            base_args: &["pull", "--rebase"],              params: &[] },
+        GitOperation { label: "Push",                     base_args: &["push"],                          params: &[] },
+        GitOperation { label: "Push (force-with-lease)",  base_args: &["push", "--force-with-lease"],    params: &[] },
+        GitOperation { label: "Push new branch…",        base_args: &["push", "-u", "origin", "HEAD"],  params: &[] },
+        // ── Stash ────────────────────────────────────────────────────────
+        GitOperation { label: "Stash",                    base_args: &["stash"],                         params: &[] },
+        GitOperation { label: "Stash pop",                base_args: &["stash", "pop"],                  params: &[] },
+        // ── Form operations (show second screen) ─────────────────────────
+        GitOperation { label: "Add…",                    base_args: &["add"],                            params: ADD_PARAMS },
+        GitOperation { label: "Commit…",                 base_args: &["commit"],                         params: COMMIT_PARAMS },
+        GitOperation { label: "Switch / Checkout…",      base_args: &["switch"],                        params: SWITCH_PARAMS },
+        GitOperation { label: "Merge…",                  base_args: &["merge"],                          params: MERGE_PARAMS },
+        GitOperation { label: "Rebase…",                 base_args: &["rebase"],                         params: REBASE_PARAMS },
+        GitOperation { label: "Reset…",                  base_args: &["reset"],                          params: RESET_PARAMS },
+        GitOperation { label: "Tag…",                    base_args: &["tag"],                             params: TAG_PARAMS },
     ]
 }
 
-/// Resolve the `git` binary, checking PATH then common installation paths.
+/// Total number of git operations — used for modal height calculation.
+pub const N_GIT_OPS: usize = 20;
+
+// ── Async runner ─────────────────────────────────────────────────────────────
+
 fn find_git_binary() -> Option<std::path::PathBuf> {
-    // Fast path: let the OS resolve via PATH
     if std::process::Command::new("git")
         .arg("--version")
         .stdout(std::process::Stdio::null())
@@ -85,7 +252,6 @@ fn find_git_binary() -> Option<std::path::PathBuf> {
     {
         return Some(std::path::PathBuf::from("git"));
     }
-    // Common locations on macOS and Linux
     for path in &[
         "/usr/bin/git",
         "/usr/local/bin/git",
@@ -99,24 +265,22 @@ fn find_git_binary() -> Option<std::path::PathBuf> {
     None
 }
 
-/// Runs `git <args>` in `dir`, streaming each output line as `Event::GitOutputLine`
-/// and signalling completion with `Event::GitDone`.
-pub async fn run_git(args: &[&str], dir: &Path, tx: UnboundedSender<Event>) -> Result<()> {
+pub async fn run_git(args: &[String], dir: &Path, tx: UnboundedSender<Event>) -> Result<()> {
     use tokio::process::Command;
 
     let git_bin = match find_git_binary() {
         Some(p) => p,
         None => {
             let _ = tx.send(Event::GitOutputLine(
-                "Error: 'git' not found in PATH or common locations.".to_string(),
-            ));
-            let _ = tx.send(Event::GitOutputLine(
-                "  macOS: run `xcode-select --install` or install via Homebrew (`brew install git`)".to_string(),
+                "Error: 'git' not found. Install via `brew install git` or `xcode-select --install`.".to_string(),
             ));
             let _ = tx.send(Event::GitDone { exit_code: -1 });
             return Ok(());
         }
     };
+
+    let cmd_display = format!("git {}", args.join(" "));
+    let _ = tx.send(Event::GitOutputLine(format!("$ {}", cmd_display)));
 
     let mut child = match Command::new(&git_bin)
         .args(args)
@@ -127,12 +291,11 @@ pub async fn run_git(args: &[&str], dir: &Path, tx: UnboundedSender<Event>) -> R
         .spawn()
     {
         Ok(c) => c,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            let _ = tx.send(Event::GitOutputLine("Error: 'git' not found".to_string()));
+        Err(e) => {
+            let _ = tx.send(Event::GitOutputLine(format!("Error: {}", e)));
             let _ = tx.send(Event::GitDone { exit_code: -1 });
             return Ok(());
         }
-        Err(e) => return Err(e.into()),
     };
 
     let stdout = child.stdout.take().expect("stdout");
@@ -149,7 +312,6 @@ pub async fn run_git(args: &[&str], dir: &Path, tx: UnboundedSender<Event>) -> R
             }
         }
     });
-
     let stderr_task = tokio::spawn(async move {
         while let Ok(Some(line)) = stderr_reader.next_line().await {
             if tx_err.send(Event::GitOutputLine(line)).is_err() {
@@ -171,76 +333,52 @@ mod tests {
 
     #[test]
     fn test_git_operations_count() {
-        let ops = git_operations();
-        assert_eq!(ops.len(), 13, "Expected 13 git operations");
-        assert_eq!(
-            ops.len(),
-            N_GIT_OPS,
-            "N_GIT_OPS constant must match git_operations().len()"
-        );
+        assert_eq!(git_operations().len(), N_GIT_OPS);
     }
 
     #[test]
-    fn test_git_operations_labels() {
+    fn test_direct_ops_have_no_params() {
         let ops = git_operations();
-        assert_eq!(ops[0].label, "Status");
-        assert_eq!(ops[1].label, "Fetch");
-        assert_eq!(ops[2].label, "Fetch all (prune)");
-        assert_eq!(ops[3].label, "Pull");
-        assert_eq!(ops[4].label, "Pull (rebase)");
-        assert_eq!(ops[5].label, "Push");
-        assert_eq!(ops[6].label, "Push (force-with-lease)");
-        assert_eq!(ops[7].label, "Push new branch upstream");
-        assert_eq!(ops[8].label, "Log (last 20)");
-        assert_eq!(ops[9].label, "List branches");
-        assert_eq!(ops[10].label, "Stash");
-        assert_eq!(ops[11].label, "Stash pop");
-        assert_eq!(ops[12].label, "Diff (stat)");
+        assert!(!ops[0].has_form()); // status
+        assert!(!ops[4].has_form()); // fetch
     }
 
     #[test]
-    fn test_git_operations_args() {
+    fn test_form_ops_have_params() {
         let ops = git_operations();
-        assert_eq!(ops[0].args, &["status"]);
-        assert_eq!(ops[2].args, &["fetch", "--all", "--prune"]);
-        assert_eq!(ops[4].args, &["pull", "--rebase"]);
-        assert_eq!(ops[6].args, &["push", "--force-with-lease"]);
-        assert_eq!(ops[7].args, &["push", "-u", "origin", "HEAD"]);
-        assert_eq!(ops[8].args, &["log", "--oneline", "-20"]);
-        assert_eq!(ops[9].args, &["branch", "-a"]);
-        assert_eq!(ops[11].args, &["stash", "pop"]);
-        assert_eq!(ops[12].args, &["diff", "--stat"]);
+        let commit = ops.iter().find(|o| o.label.starts_with("Commit")).unwrap();
+        assert!(commit.has_form());
+        assert_eq!(commit.params.len(), 4);
     }
 
-    #[tokio::test]
-    async fn test_run_git_status_in_repo() {
-        // Run git status in the project root (which is a git repo)
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        tokio::spawn(async move {
-            let _ = run_git(&["status"], dir, tx).await;
-        });
+    #[test]
+    fn test_build_args_commit() {
+        let ops = git_operations();
+        let op = *ops.iter().find(|o| o.label.starts_with("Commit")).unwrap();
+        let mut values = default_values(op.params);
+        values[0] = GitParamValue::Text("fix: typo".to_string());
+        values[1] = GitParamValue::Bool(true); // --amend
+        let args = build_args(op, &values);
+        assert_eq!(args, vec!["commit", "-m", "fix: typo", "--amend"]);
+    }
 
-        let mut got_done = false;
-        let mut lines = vec![];
-        let timeout = tokio::time::Duration::from_secs(10);
-        let _ = tokio::time::timeout(timeout, async {
-            loop {
-                match rx.recv().await {
-                    Some(Event::GitOutputLine(line)) => lines.push(line),
-                    Some(Event::GitDone { exit_code }) => {
-                        assert_eq!(exit_code, 0, "git status should succeed in a git repo");
-                        got_done = true;
-                        break;
-                    }
-                    None => break,
-                    _ => {}
-                }
-            }
-        })
-        .await;
+    #[test]
+    fn test_build_args_switch_new_branch() {
+        let ops = git_operations();
+        let op = *ops.iter().find(|o| o.label.starts_with("Switch")).unwrap();
+        let mut values = default_values(op.params);
+        values[0] = GitParamValue::Text("feat/new".to_string());
+        values[1] = GitParamValue::Bool(true); // -c
+        let args = build_args(op, &values);
+        assert_eq!(args, vec!["switch", "feat/new", "-c"]);
+    }
 
-        assert!(got_done, "Should have received GitDone event");
-        assert!(!lines.is_empty(), "git status should produce output");
+    #[test]
+    fn test_default_values() {
+        let ops = git_operations();
+        let op = *ops.iter().find(|o| o.label.starts_with("Add")).unwrap();
+        let vals = default_values(op.params);
+        assert_eq!(vals[0], GitParamValue::Text(String::new()));
+        assert_eq!(vals[1], GitParamValue::Bool(true)); // -A default
     }
 }

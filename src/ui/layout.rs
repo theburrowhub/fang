@@ -17,6 +17,14 @@ pub fn draw(frame: &mut Frame, state: &AppState) {
     components::header::render(frame, header_area, state);
     components::footer::render(frame, footer_area, state);
 
+    // Git form overlay (second screen)
+    if matches!(state.mode, AppMode::GitForm { .. }) {
+        render_main_panels(frame, main_area, state);
+        render_git_modal(frame, area, state);   // keep first screen dimmed behind
+        components::git_form::render(frame, area, state);
+        return;
+    }
+
     // Full-screen Help overlay
     if let AppMode::Help { scroll } = state.mode {
         components::help::render(frame, area, scroll);

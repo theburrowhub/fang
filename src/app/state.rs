@@ -94,9 +94,18 @@ pub enum AppMode {
     ExternalCommand {
         cmd: String,
     },
-    /// Git operations menu modal.
+    /// Git operations menu modal (first screen).
     GitMenu {
         selected: usize,
+    },
+    /// Git form (second screen — parameters for an operation).
+    GitForm {
+        /// Index into `git_operations()` of the selected operation.
+        op_index: usize,
+        /// Current values for each parameter in the form.
+        values: Vec<crate::commands::git::GitParamValue>,
+        /// Index of the currently focused control.
+        focused: usize,
     },
     /// Creating a new file. `from_clipboard` = true means paste clipboard content.
     NewFile {

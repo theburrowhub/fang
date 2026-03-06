@@ -80,7 +80,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                 Style::default().fg(Color::White)
             };
 
-            let cmd_display = format!("git {}", op.args.join(" "));
+            let cmd_display = format!("git {}", op.base_args.join(" "));
             let lines = vec![
                 Line::from(vec![
                     Span::styled("\u{2023} ", Style::default().fg(Color::Cyan)),

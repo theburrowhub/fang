@@ -106,6 +106,7 @@ fn mode_str(mode: &AppMode) -> &'static str {
         AppMode::Search { .. } => "Search",
         AppMode::MakeTarget => "Make",
         AppMode::GitMenu { .. } => "Git",
+        AppMode::GitForm { .. } => "GitForm",
         AppMode::CommandInput { .. } => "Command", // handled by prompt above
         AppMode::ExternalCommand { .. } => "Split", // handled by prompt above
         AppMode::NewFile { .. } => "NewFile",      // handled by prompt above
