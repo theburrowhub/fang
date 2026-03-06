@@ -4,8 +4,7 @@
 //! to change values, Esc to save and close.
 
 use crate::app::state::{AppMode, AppState};
-use crate::config;
-use crate::ui::utils::{key_hint, panel_border_style};
+use crate::ui::utils::key_hint;
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
