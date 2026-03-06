@@ -130,8 +130,10 @@ jobs:
           git add Cargo.toml CHANGELOG.md
           # [skip ci] prevents this push from re-triggering the workflow
           git commit -m "chore: release v${V} [skip ci]"
-          git tag "v${V}"
-          git push origin main --follow-tags
+          # Annotated tag (--follow-tags only pushes annotated, not lightweight)
+          git tag -a "v${V}" -m "Release v${V}"
+          git push origin main
+          git push origin "v${V}"
 
   # ── 3. Cross-compile binaries (matrix, parallel) ─────────────────────────
   build:
