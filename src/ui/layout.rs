@@ -3,7 +3,7 @@ use crate::app::state::{AppMode, AppState};
 use ratatui::prelude::*;
 use ratatui::widgets::Clear;
 
-pub fn draw(frame: &mut Frame, state: &AppState) {
+pub fn draw(frame: &mut Frame, state: &mut AppState) {
     let area = frame.area();
 
     // Reserve 1 line for header, 1 line for footer (keybindings only)
@@ -41,7 +41,7 @@ pub fn draw(frame: &mut Frame, state: &AppState) {
     render_main_panels(frame, main_area, state);
 }
 
-fn render_main_panels(frame: &mut Frame, area: Rect, state: &AppState) {
+fn render_main_panels(frame: &mut Frame, area: Rect, state: &mut AppState) {
     let width = area.width;
     let show_sidebar = state.sidebar_visible && width >= 80;
     let show_preview = state.preview_visible && !state.ai_panel_visible;

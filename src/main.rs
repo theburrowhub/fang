@@ -758,9 +758,10 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
                     state.focused_panel = app::state::FocusedPanel::AiChat;
 
                     let prompt_owned = prompt_text.clone();
-                    tokio::spawn(async move {
+                    let handle = tokio::spawn(async move {
                         commands::ai::run_ai_prompt(&config, &prompt_owned, &context, tx2).await;
                     });
+                    state.ai_task_handle = Some(handle.abort_handle());
                 } else {
                     state.status_message =
                         Some("No AI provider configured. Press I to select one.".to_string());
@@ -830,9 +831,7 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
             }
         }
         Action::AiScrollUp => {
-            let total = state.ai_total_lines.get();
-            let view = state.ai_view_height.get();
-            let max_scroll = total.saturating_sub(view);
+            let max_scroll = state.ai_max_scroll;
             // Normalise from usize::MAX sentinel to the real bottom position.
             if state.ai_scroll > max_scroll {
                 state.ai_scroll = max_scroll;
@@ -840,9 +839,7 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
             state.ai_scroll = state.ai_scroll.saturating_sub(3);
         }
         Action::AiScrollDown => {
-            let total = state.ai_total_lines.get();
-            let view = state.ai_view_height.get();
-            let max_scroll = total.saturating_sub(view);
+            let max_scroll = state.ai_max_scroll;
             if state.ai_scroll > max_scroll {
                 // Already at bottom — nothing to do.
             } else {
@@ -854,6 +851,9 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
             }
         }
         Action::ResetAiSession => {
+            if let Some(handle) = state.ai_task_handle.take() {
+                handle.abort();
+            }
             state.ai_conversation.clear();
             state.ai_streaming = false;
             state.ai_scroll = usize::MAX;
@@ -1039,8 +1039,11 @@ async fn main() -> Result<()> {
 
     tracing::info!("Fang starting in {:?}", initial_dir);
 
+    // Load AI config before entering raw mode to avoid blocking the TUI on slow filesystems.
+    let ai_config = commands::ai::load_config();
+
     // Initialize state
-    let mut state = AppState::new(initial_dir.clone());
+    let mut state = AppState::new(initial_dir.clone(), ai_config);
     state.sidebar_tree = build_sidebar_tree(&initial_dir);
 
     // Setup internal event channel (for async results from background tasks)
@@ -1074,7 +1077,7 @@ async fn main() -> Result<()> {
         }
 
         // Render current state
-        terminal.draw(|f| ui::layout::draw(f, &state))?;
+        terminal.draw(|f| ui::layout::draw(f, &mut state))?;
 
         if state.should_quit {
             break;

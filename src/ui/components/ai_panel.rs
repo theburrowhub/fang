@@ -10,7 +10,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 
-pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
+pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     frame.render_widget(Clear, area);
 
     let is_focused = state.focused_panel == FocusedPanel::AiChat;
@@ -145,12 +145,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let paragraph = Paragraph::new(display).wrap(Wrap { trim: false });
     let total_visual = paragraph.line_count(inner.width);
 
-    // Publish totals so the scroll handler can normalise usize::MAX.
-    state.ai_total_lines.set(total_visual);
-    state.ai_view_height.set(inner_height);
+    // Update max_scroll so the action handler can normalise usize::MAX.
+    let max_scroll = total_visual.saturating_sub(inner_height);
+    state.ai_max_scroll = max_scroll;
 
     // Scrolling — Paragraph::scroll uses visual (wrapped) line offsets.
-    let max_scroll = total_visual.saturating_sub(inner_height);
     let scroll_y = if state.ai_scroll > max_scroll {
         // usize::MAX or beyond end → stick to bottom.
         max_scroll
@@ -158,5 +157,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         state.ai_scroll
     };
 
-    frame.render_widget(paragraph.scroll((scroll_y as u16, 0)), inner);
+    frame.render_widget(
+        paragraph.scroll(((scroll_y.min(u16::MAX as usize)) as u16, 0)),
+        inner,
+    );
 }

@@ -218,16 +218,19 @@ pub struct AppState {
     pub ai_panel_visible: bool,
     /// Scroll position within the AI chat panel.
     pub ai_scroll: usize,
-    /// Total display lines in the AI chat (set by the renderer each frame).
-    pub ai_total_lines: std::cell::Cell<usize>,
-    /// Visible height of the AI chat inner area (set by the renderer each frame).
-    pub ai_view_height: std::cell::Cell<usize>,
+    /// Maximum scroll offset (total visual lines − view height). Updated each frame.
+    pub ai_max_scroll: usize,
     /// Whether an AI response is currently streaming.
     pub ai_streaming: bool,
+    /// Handle to abort the in-flight AI streaming task.
+    pub ai_task_handle: Option<tokio::task::AbortHandle>,
 }
 
 impl AppState {
-    pub fn new(initial_dir: PathBuf) -> Self {
+    pub fn new(
+        initial_dir: PathBuf,
+        ai_config: Option<crate::commands::ai::AiProviderConfig>,
+    ) -> Self {
         Self {
             current_dir: initial_dir,
             entries: vec![],
@@ -251,14 +254,14 @@ impl AppState {
             should_quit: false,
             needs_terminal_clear: false,
             command_stdin: None,
-            ai_provider: crate::commands::ai::load_config(),
+            ai_provider: ai_config,
             ai_providers: vec![],
             ai_conversation: vec![],
             ai_panel_visible: false,
             ai_scroll: usize::MAX,
-            ai_total_lines: std::cell::Cell::new(0),
-            ai_view_height: std::cell::Cell::new(0),
+            ai_max_scroll: 0,
             ai_streaming: false,
+            ai_task_handle: None,
         }
     }
 
@@ -324,7 +327,7 @@ mod tests {
 
     #[test]
     fn test_new_state() {
-        let state = AppState::new(PathBuf::from("."));
+        let state = AppState::new(PathBuf::from("."), None);
         assert!(state.entries.is_empty());
         assert_eq!(state.selected_index, 0);
         assert_eq!(state.mode, AppMode::Normal);
@@ -333,7 +336,7 @@ mod tests {
 
     #[test]
     fn test_visible_entries_no_filter() {
-        let mut s = AppState::new(PathBuf::from("."));
+        let mut s = AppState::new(PathBuf::from("."), None);
         s.entries = vec![make_entry("a.rs", false), make_entry("b.rs", false)];
         assert_eq!(s.visible_entries().len(), 2);
         assert_eq!(s.visible_count(), 2);
@@ -341,7 +344,7 @@ mod tests {
 
     #[test]
     fn test_visible_entries_with_filter() {
-        let mut s = AppState::new(PathBuf::from("."));
+        let mut s = AppState::new(PathBuf::from("."), None);
         s.entries = vec![
             make_entry("main.rs", false),
             make_entry("lib.rs", false),
@@ -357,7 +360,7 @@ mod tests {
 
     #[test]
     fn test_selected_entry_with_filter() {
-        let mut s = AppState::new(PathBuf::from("."));
+        let mut s = AppState::new(PathBuf::from("."), None);
         s.entries = vec![make_entry("main.rs", false), make_entry("lib.rs", false)];
         s.search_query = "rs".to_string();
         s.filtered_indices = vec![0, 1];

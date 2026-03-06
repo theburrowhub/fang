@@ -163,12 +163,16 @@ pub async fn detect_providers() -> Vec<AiProvider> {
 
 /// Detect Claude Code CLI.
 async fn detect_claude() -> Option<AiProvider> {
-    // Check binary exists
-    let output = tokio::process::Command::new("claude")
-        .args(["auth", "status"])
-        .output()
-        .await
-        .ok()?;
+    // Check binary exists — with timeout to avoid hanging on keyring/network prompts.
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        tokio::process::Command::new("claude")
+            .args(["auth", "status"])
+            .output(),
+    )
+    .await
+    .ok()?
+    .ok()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
@@ -534,7 +538,8 @@ async fn run_openai_api(
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| format!("stream: {}", e))?;
-        let text = String::from_utf8_lossy(&chunk);
+        // Normalise CRLF → LF so the SSE delimiter detection works with all servers.
+        let text = String::from_utf8_lossy(&chunk).replace("\r\n", "\n");
         buffer.push_str(&text);
 
         // SSE format: "data: {json}\n\n"
@@ -610,7 +615,8 @@ async fn run_anthropic_api(
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| format!("stream: {}", e))?;
-        let text = String::from_utf8_lossy(&chunk);
+        // Normalise CRLF → LF so the SSE delimiter detection works with all servers.
+        let text = String::from_utf8_lossy(&chunk).replace("\r\n", "\n");
         buffer.push_str(&text);
 
         // SSE format: "event: ...\ndata: {json}\n\n"
