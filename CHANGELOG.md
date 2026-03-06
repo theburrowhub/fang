@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.2.1] — 2026-03-06
+
+### Bug Fixes
+
+- Add c/C copy-path bindings to keybindings registry ([5889348](https://github.com/theburrowhub/fang/commit/588934847b8c3a70fe56a62a465f36bfd355be6d))
+
+
 ## [0.2.0] — 2026-03-06
 
 ### Bug Fixes
