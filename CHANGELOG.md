@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.1.1] — 2026-03-06
+
+### Bug Fixes
+
+- Use annotated tag and explicit tag push in release-prep ([6b94697](https://github.com/theburrowhub/fang/commit/6b9469779d61d9689cab399578da5474079428d6))
+
+
 ## [0.1.0] — 2026-03-06
 
 ### Bug Fixes
