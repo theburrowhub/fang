@@ -1054,6 +1054,9 @@ async fn main() -> Result<()> {
     // Load persisted config (sync read before TUI starts — acceptable for startup)
     let cfg = config::load();
     let mut state = AppState::new(initial_dir.clone());
+    // Apply persisted panel visibility — s/p toggle this in-session without saving.
+    state.sidebar_visible = cfg.layout.sidebar_visible;
+    state.preview_visible = cfg.layout.preview_visible;
     state.config = cfg;
     state.sidebar_tree = build_sidebar_tree(&initial_dir);
 

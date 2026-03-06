@@ -7,12 +7,14 @@ use std::path::PathBuf;
 
 // ── Layout settings ──────────────────────────────────────────────────────────
 
-/// Panel size configuration — all values are **percentages of terminal width**.
+/// Panel size and visibility configuration.
 ///
-/// Invariant: `sidebar_pct + file_list_pct + preview_pct == 100`
+/// Size invariant: `sidebar_pct + file_list_pct + preview_pct == 100`
+/// (`preview_pct` is derived and not stored on disk.)
 ///
-/// `preview_pct` is **derived** (`100 - sidebar_pct - file_list_pct`) and is
-/// not stored on disk; it is computed on the fly.
+/// Visibility fields control the *default* state on launch.
+/// The `s`/`p` keys toggle visibility temporarily for the session but do not
+/// persist; only changing the value here (via Ctrl+S) saves to disk.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayoutConfig {
     /// Sidebar tree panel width (%, default 15).
@@ -20,24 +22,28 @@ pub struct LayoutConfig {
     pub sidebar_pct: u16,
 
     /// File-list panel width (%, default 20).
-    /// Preview automatically gets `100 - sidebar_pct - file_list_pct`.
     #[serde(default = "default_file_list_pct")]
     pub file_list_pct: u16,
+
+    /// Whether the sidebar panel is visible on launch (default true).
+    #[serde(default = "default_true")]
+    pub sidebar_visible: bool,
+
+    /// Whether the preview panel is visible on launch (default true).
+    #[serde(default = "default_true")]
+    pub preview_visible: bool,
 }
 
 impl LayoutConfig {
-    /// Derived preview percentage — always `100 - sidebar - file_list`.
     pub fn preview_pct(&self) -> u16 {
         100u16
             .saturating_sub(self.sidebar_pct)
             .saturating_sub(self.file_list_pct)
     }
 
-    /// Clamp values so `sidebar + file_list <= 95` (leaving ≥ 5 % for preview).
     pub fn clamp(&mut self) {
         self.sidebar_pct = self.sidebar_pct.clamp(5, 50);
         self.file_list_pct = self.file_list_pct.clamp(5, 50);
-        // Ensure total ≤ 95
         if self.sidebar_pct + self.file_list_pct > 95 {
             self.file_list_pct = 95 - self.sidebar_pct;
         }
@@ -49,16 +55,15 @@ impl Default for LayoutConfig {
         Self {
             sidebar_pct: default_sidebar_pct(),
             file_list_pct: default_file_list_pct(),
+            sidebar_visible: true,
+            preview_visible: true,
         }
     }
 }
 
-fn default_sidebar_pct() -> u16 {
-    15
-}
-fn default_file_list_pct() -> u16 {
-    20
-}
+fn default_sidebar_pct() -> u16 { 15 }
+fn default_file_list_pct() -> u16 { 20 }
+fn default_true() -> bool { true }
 
 // ── Top-level config file ─────────────────────────────────────────────────────
 
@@ -66,7 +71,6 @@ fn default_file_list_pct() -> u16 {
 pub struct Config {
     #[serde(default)]
     pub layout: LayoutConfig,
-    // `[ai]` section — introduced by PR #18, merged here once that PR lands.
 }
 
 // ── Persistence ───────────────────────────────────────────────────────────────
@@ -100,81 +104,109 @@ pub fn save(config: &Config) -> Result<(), String> {
 
 // ── Editable settings list ────────────────────────────────────────────────────
 
-/// Whether an entry is editable or derived (read-only, shown in gray).
+/// How the value of a `SettingEntry` behaves in the editor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EntryKind {
+    /// Numeric range — +/- change by 1.
     Editable { min: u16, max: u16 },
+    /// Derived / read-only (shown in gray, cannot be edited).
     Derived,
+    /// On/off toggle — any edit key flips 0 ↔ 1.
+    Toggle,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingEntry {
     pub key: &'static str,
     pub description: &'static str,
+    /// For numeric entries: the current integer value.
+    /// For Toggle entries: 0 = off, 1 = on.
     pub value: u16,
     pub kind: EntryKind,
 }
 
 impl SettingEntry {
     pub fn increment(&mut self) {
-        if let EntryKind::Editable { min: _, max } = self.kind {
-            if self.value < max {
-                self.value += 1;
+        match self.kind {
+            EntryKind::Editable { min: _, max } => {
+                if self.value < max { self.value += 1; }
             }
+            EntryKind::Toggle => { self.value = if self.value == 0 { 1 } else { 0 }; }
+            EntryKind::Derived => {}
         }
     }
     pub fn decrement(&mut self) {
-        if let EntryKind::Editable { min, max: _ } = self.kind {
-            if self.value > min {
-                self.value -= 1;
+        match self.kind {
+            EntryKind::Editable { min, max: _ } => {
+                if self.value > min { self.value -= 1; }
             }
+            EntryKind::Toggle => { self.value = if self.value == 0 { 1 } else { 0 }; }
+            EntryKind::Derived => {}
         }
     }
     pub fn is_editable(&self) -> bool {
-        matches!(self.kind, EntryKind::Editable { .. })
+        !matches!(self.kind, EntryKind::Derived)
+    }
+    #[allow(dead_code)]
+    pub fn is_toggle(&self) -> bool {
+        matches!(self.kind, EntryKind::Toggle)
+    }
+    pub fn as_bool(&self) -> bool {
+        self.value != 0
     }
 }
 
-/// Build the editable entries list from a `Config` snapshot.
-/// The preview entry is derived and kept in sync automatically.
 pub fn entries_from_config(cfg: &Config) -> Vec<SettingEntry> {
     let preview = cfg.layout.preview_pct();
     vec![
+        // ── Panel sizes ───────────────────────────────────────────────────
         SettingEntry {
             key: "layout.sidebar_pct",
-            description: "Sidebar",
+            description: "Sidebar width",
             value: cfg.layout.sidebar_pct,
             kind: EntryKind::Editable { min: 5, max: 50 },
         },
         SettingEntry {
             key: "layout.file_list_pct",
-            description: "File list",
+            description: "File list width",
             value: cfg.layout.file_list_pct,
             kind: EntryKind::Editable { min: 5, max: 50 },
         },
         SettingEntry {
             key: "layout.preview_pct",
-            description: "Preview",
+            description: "Preview width",
             value: preview,
             kind: EntryKind::Derived,
+        },
+        // ── Panel visibility (default state on launch) ────────────────────
+        SettingEntry {
+            key: "layout.sidebar_visible",
+            description: "Sidebar visible on launch",
+            value: if cfg.layout.sidebar_visible { 1 } else { 0 },
+            kind: EntryKind::Toggle,
+        },
+        SettingEntry {
+            key: "layout.preview_visible",
+            description: "Preview visible on launch",
+            value: if cfg.layout.preview_visible { 1 } else { 0 },
+            kind: EntryKind::Toggle,
         },
     ]
 }
 
-/// Sync edited entries back into `cfg` and re-derive the preview value.
 pub fn apply_entries(cfg: &mut Config, entries: &[SettingEntry]) {
     for e in entries {
         match e.key {
             "layout.sidebar_pct" => cfg.layout.sidebar_pct = e.value,
             "layout.file_list_pct" => cfg.layout.file_list_pct = e.value,
+            "layout.sidebar_visible" => cfg.layout.sidebar_visible = e.as_bool(),
+            "layout.preview_visible" => cfg.layout.preview_visible = e.as_bool(),
             _ => {}
         }
     }
     cfg.layout.clamp();
 }
 
-/// After editing sidebar or file_list, re-compute the derived preview entry
-/// so the modal shows the up-to-date value without closing and reopening.
 pub fn refresh_derived(entries: &mut [SettingEntry], cfg: &Config) {
     let preview = cfg.layout.preview_pct();
     if let Some(e) = entries.iter_mut().find(|e| e.key == "layout.preview_pct") {
