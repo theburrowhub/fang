@@ -1,87 +1,73 @@
 //! Markdown renderer for the preview panel.
 //!
-//! Converts Markdown source into a flat list of [`StyledLine`]s that ratatui
-//! can display directly, applying visual formatting:
-//!
-//! - `# Heading` → bold + cyan, preceded by a blank separator
-//! - `**bold**` / `__bold__` → bold white
-//! - `*italic*` / `_italic_` → italic gray
-//! - `` `code` `` → yellow mono-style text
-//! - `> blockquote` → dark-gray italic with leading `│ `
-//! - `- item` / `* item` / `1. item` → indented with `• ` / `  1. `
-//! - `---` / `***` (thematic break) → a line of `─` chars
-//! - Fenced code blocks → plain white (syntax highlighting kept for text.rs)
-//! - Plain paragraphs → white, wrapped at the source line boundaries
+//! Converts Markdown source into styled [`StyledLine`]s:
+//! - H1–H6 headings, bold/italic/strikethrough, inline code
+//! - Tables: header + separator + data rows, cells joined with  │
+//! - Blockquotes with │ prefix, fenced code blocks
+//! - Lists (unordered • and ordered), thematic rules
+//! - Links: underlined text + (url) appended in dim color
 
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Color, Modifier, Style};
 
 use crate::app::state::StyledLine;
 
-/// Parse `source` and return a list of styled lines suitable for the preview panel.
 pub fn render_markdown(source: &str, panel_width: u16) -> Vec<StyledLine> {
     let opts = Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TABLES | Options::ENABLE_TASKLISTS;
     let parser = Parser::new_ext(source, opts);
 
     let mut lines: Vec<StyledLine> = Vec::new();
-    // Accumulate spans for the current visual line
     let mut current: Vec<(Style, String)> = Vec::new();
-    // Stack of active inline styles
     let mut style_stack: Vec<Style> = vec![Style::default().fg(Color::White)];
-    // Whether we're inside a code block
+
+    // Table state
+    let mut in_table = false;
+    let mut _in_table_head = false;
+    let mut row_cells: Vec<Vec<(Style, String)>> = Vec::new();
+    let mut cell_spans: Vec<(Style, String)> = Vec::new();
+    let mut in_cell = false;
+
+    // Other state
     let mut in_code_block = false;
-    // Whether we're inside a blockquote
     let mut in_blockquote = false;
-    // List nesting depth and ordered-list counters
     let mut list_depth: usize = 0;
     let mut ordered_counter: Vec<u64> = Vec::new();
+    let mut pending_link_url: Option<String> = None;
 
-    let push_line = |lines: &mut Vec<StyledLine>, spans: Vec<(Style, String)>| {
-        lines.push(StyledLine { spans });
-    };
-
-    let flush = |lines: &mut Vec<StyledLine>, current: &mut Vec<(Style, String)>| {
-        let spans = std::mem::take(current);
-        push_line(lines, spans);
-    };
+    macro_rules! target {
+        () => {
+            if in_cell {
+                &mut cell_spans
+            } else {
+                &mut current
+            }
+        };
+    }
 
     for event in parser {
         match event {
-            // ── Block starts ─────────────────────────────────────────────────
+            // ─── Headings ──────────────────────────────────────────────────
             Event::Start(Tag::Heading { level, .. }) => {
-                flush(&mut lines, &mut current);
-                lines.push(StyledLine { spans: vec![] }); // blank before heading
-                let color = match level {
-                    HeadingLevel::H1 => Color::Cyan,
-                    HeadingLevel::H2 => Color::LightCyan,
-                    HeadingLevel::H3 => Color::LightBlue,
-                    _ => Color::Blue,
-                };
-                let prefix = match level {
-                    HeadingLevel::H1 => "# ",
-                    HeadingLevel::H2 => "## ",
-                    HeadingLevel::H3 => "### ",
-                    HeadingLevel::H4 => "#### ",
-                    HeadingLevel::H5 => "##### ",
-                    HeadingLevel::H6 => "###### ",
-                };
-                current.push((
-                    Style::default().fg(color).add_modifier(Modifier::BOLD),
-                    prefix.to_string(),
-                ));
-                style_stack.push(Style::default().fg(color).add_modifier(Modifier::BOLD));
+                do_flush(&mut lines, &mut current);
+                lines.push(StyledLine { spans: vec![] });
+                let (color, prefix) = heading_props(level);
+                let st = Style::default().fg(color).add_modifier(Modifier::BOLD);
+                current.push((st, prefix.to_string()));
+                style_stack.push(st);
             }
             Event::End(TagEnd::Heading(_)) => {
                 style_stack.pop();
-                flush(&mut lines, &mut current);
+                do_flush(&mut lines, &mut current);
             }
 
+            // ─── Paragraph ────────────────────────────────────────────────
             Event::Start(Tag::Paragraph) => {}
             Event::End(TagEnd::Paragraph) => {
-                flush(&mut lines, &mut current);
-                lines.push(StyledLine { spans: vec![] }); // blank after paragraph
+                do_flush(&mut lines, &mut current);
+                lines.push(StyledLine { spans: vec![] });
             }
 
+            // ─── Blockquote ───────────────────────────────────────────────
             Event::Start(Tag::BlockQuote(_)) => {
                 in_blockquote = true;
                 style_stack.push(
@@ -94,63 +80,98 @@ pub fn render_markdown(source: &str, panel_width: u16) -> Vec<StyledLine> {
             Event::End(TagEnd::BlockQuote(_)) => {
                 in_blockquote = false;
                 style_stack.pop();
-                flush(&mut lines, &mut current);
+                do_flush(&mut lines, &mut current);
             }
 
+            // ─── Code block ───────────────────────────────────────────────
             Event::Start(Tag::CodeBlock(_)) => {
                 in_code_block = true;
-                flush(&mut lines, &mut current);
+                do_flush(&mut lines, &mut current);
                 style_stack.push(Style::default().fg(Color::White));
             }
             Event::End(TagEnd::CodeBlock) => {
                 in_code_block = false;
                 style_stack.pop();
-                flush(&mut lines, &mut current);
+                do_flush(&mut lines, &mut current);
             }
 
-            Event::Start(Tag::List(start_num)) => {
+            // ─── Lists ────────────────────────────────────────────────────
+            Event::Start(Tag::List(start)) => {
                 list_depth += 1;
-                if let Some(n) = start_num {
-                    ordered_counter.push(n);
-                } else {
-                    ordered_counter.push(0); // sentinel for unordered
-                }
+                ordered_counter.push(start.unwrap_or(0));
             }
             Event::End(TagEnd::List(_)) => {
                 list_depth = list_depth.saturating_sub(1);
                 ordered_counter.pop();
             }
             Event::Start(Tag::Item) => {
-                flush(&mut lines, &mut current);
+                do_flush(&mut lines, &mut current);
                 let indent = "  ".repeat(list_depth.saturating_sub(1));
-                let counter = ordered_counter.last_mut();
-                let bullet = if let Some(c) = counter {
-                    if *c == 0 {
-                        // unordered
-                        format!("{}• ", indent)
-                    } else {
+                let bullet = match ordered_counter.last_mut() {
+                    Some(c) if *c > 0 => {
                         let s = format!("{}{}. ", indent, c);
                         *c += 1;
                         s
                     }
-                } else {
-                    format!("{}• ", indent)
+                    _ => format!("{}• ", indent),
                 };
                 current.push((Style::default().fg(Color::Yellow), bullet));
             }
             Event::End(TagEnd::Item) => {
-                flush(&mut lines, &mut current);
+                do_flush(&mut lines, &mut current);
             }
 
+            // ─── Thematic rule ────────────────────────────────────────────
             Event::Rule => {
-                flush(&mut lines, &mut current);
-                let width = (panel_width as usize).saturating_sub(2).max(4);
+                do_flush(&mut lines, &mut current);
+                let w = (panel_width as usize).saturating_sub(2).max(4);
                 lines.push(StyledLine {
-                    spans: vec![(Style::default().fg(Color::DarkGray), "─".repeat(width))],
+                    spans: vec![(Style::default().fg(Color::DarkGray), "─".repeat(w))],
                 });
             }
 
-            // ── Inline starts ─────────────────────────────────────────────────
+            // ─── Tables ───────────────────────────────────────────────────
+            Event::Start(Tag::Table(_)) => {
+                do_flush(&mut lines, &mut current);
+                lines.push(StyledLine { spans: vec![] });
+                in_table = true;
+            }
+            Event::End(TagEnd::Table) => {
+                in_table = false;
+                lines.push(StyledLine { spans: vec![] });
+            }
+            Event::Start(Tag::TableHead) => {
+                _in_table_head = true;
+                row_cells.clear();
+            }
+            Event::End(TagEnd::TableHead) => {
+                _in_table_head = false;
+                let head_style = Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD);
+                lines.push(cells_to_line(&row_cells, head_style));
+                let w = (panel_width as usize).saturating_sub(2).max(4);
+                lines.push(StyledLine {
+                    spans: vec![(Style::default().fg(Color::DarkGray), "─".repeat(w))],
+                });
+                row_cells.clear();
+            }
+            Event::Start(Tag::TableRow) => {
+                row_cells.clear();
+            }
+            Event::End(TagEnd::TableRow) => {
+                lines.push(cells_to_line(&row_cells, Style::default().fg(Color::White)));
+            }
+            Event::Start(Tag::TableCell) => {
+                in_cell = true;
+                cell_spans.clear();
+            }
+            Event::End(TagEnd::TableCell) => {
+                in_cell = false;
+                row_cells.push(std::mem::take(&mut cell_spans));
+            }
+
+            // ─── Inline styles ────────────────────────────────────────────
             Event::Start(Tag::Strong) => {
                 style_stack.push(
                     Style::default()
@@ -161,7 +182,6 @@ pub fn render_markdown(source: &str, panel_width: u16) -> Vec<StyledLine> {
             Event::End(TagEnd::Strong) => {
                 style_stack.pop();
             }
-
             Event::Start(Tag::Emphasis) => {
                 style_stack.push(
                     Style::default()
@@ -172,7 +192,6 @@ pub fn render_markdown(source: &str, panel_width: u16) -> Vec<StyledLine> {
             Event::End(TagEnd::Emphasis) => {
                 style_stack.pop();
             }
-
             Event::Start(Tag::Strikethrough) => {
                 style_stack.push(
                     Style::default()
@@ -184,79 +203,136 @@ pub fn render_markdown(source: &str, panel_width: u16) -> Vec<StyledLine> {
                 style_stack.pop();
             }
 
+            // ─── Links ────────────────────────────────────────────────────
             Event::Start(Tag::Link { dest_url, .. }) => {
+                pending_link_url = Some(dest_url.into_string());
                 style_stack.push(
                     Style::default()
                         .fg(Color::Blue)
                         .add_modifier(Modifier::UNDERLINED),
                 );
-                // We'll append the URL after the link text in End
-                let _ = dest_url; // stored by pulldown-cmark until End
             }
             Event::End(TagEnd::Link) => {
                 style_stack.pop();
+                if let Some(url) = pending_link_url.take() {
+                    if !url.is_empty() && !url.starts_with('#') {
+                        target!()
+                            .push((Style::default().fg(Color::DarkGray), format!(" ({})", url)));
+                    }
+                }
             }
 
             Event::Start(Tag::Image { .. }) => {
-                current.push((Style::default().fg(Color::DarkGray), "[image]".to_string()));
+                target!().push((Style::default().fg(Color::DarkGray), "[img] ".to_string()));
+                style_stack.push(Style::default().fg(Color::DarkGray));
             }
-            Event::End(TagEnd::Image) => {}
+            Event::End(TagEnd::Image) => {
+                style_stack.pop();
+            }
 
-            // ── Inline content ────────────────────────────────────────────────
+            // ─── Text content ─────────────────────────────────────────────
             Event::Text(text) => {
                 let style = *style_stack.last().unwrap_or(&Style::default());
+                let t = text.into_string();
+
                 if in_code_block {
-                    // Code block: emit each source line as its own StyledLine
-                    for line in text.lines() {
+                    // Each source line → its own StyledLine
+                    let mut first = true;
+                    for line in t.lines() {
+                        if !first {
+                            do_flush(&mut lines, &mut current);
+                        }
                         current.push((style, line.to_string()));
-                        flush(&mut lines, &mut current);
+                        first = false;
                     }
                 } else if in_blockquote {
-                    // Blockquote: prefix each line with │
                     let mut first = true;
-                    for line in text.lines() {
+                    for line in t.lines() {
                         if !first {
-                            flush(&mut lines, &mut current);
+                            do_flush(&mut lines, &mut current);
                             current.push((Style::default().fg(Color::DarkGray), "│ ".to_string()));
                         }
                         current.push((style, line.to_string()));
                         first = false;
                     }
+                } else if in_cell {
+                    // Inside a table cell: newlines → space
+                    cell_spans.push((style, t.replace('\n', " ")));
+                } else if t.contains('\n') {
+                    // Preserve paragraph-internal newlines
+                    let mut first = true;
+                    for line in t.split('\n') {
+                        if !first {
+                            do_flush(&mut lines, &mut current);
+                        }
+                        current.push((style, line.to_string()));
+                        first = false;
+                    }
                 } else {
-                    current.push((style, text.into_string()));
+                    current.push((style, t));
                 }
             }
 
             Event::Code(code) => {
-                current.push((
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                    code.into_string(),
-                ));
+                let st = Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD);
+                target!().push((st, code.into_string()));
             }
 
             Event::SoftBreak => {
-                current.push((Style::default(), " ".to_string()));
+                if in_cell {
+                    cell_spans.push((Style::default(), " ".to_string()));
+                } else {
+                    current.push((Style::default(), " ".to_string()));
+                }
             }
 
             Event::HardBreak => {
-                flush(&mut lines, &mut current);
-            }
-
-            Event::Html(_) | Event::InlineHtml(_) => {
-                // Raw HTML — show as-is in dim color
-                // (pulldown-cmark gives us the raw tag, skip it for cleanliness)
+                if !in_table {
+                    do_flush(&mut lines, &mut current);
+                }
             }
 
             _ => {}
         }
     }
 
-    // Flush any remaining content
     if !current.is_empty() {
-        flush(&mut lines, &mut current);
+        do_flush(&mut lines, &mut current);
     }
-
     lines
+}
+
+// ── helpers ─────────────────────────────────────────────────────────────────
+
+fn do_flush(lines: &mut Vec<StyledLine>, current: &mut Vec<(Style, String)>) {
+    lines.push(StyledLine {
+        spans: std::mem::take(current),
+    });
+}
+
+fn heading_props(level: HeadingLevel) -> (Color, &'static str) {
+    match level {
+        HeadingLevel::H1 => (Color::Cyan, ""),
+        HeadingLevel::H2 => (Color::LightCyan, ""),
+        HeadingLevel::H3 => (Color::LightBlue, ""),
+        _ => (Color::Blue, ""),
+    }
+}
+
+/// Join `cells` into one [`StyledLine`] with `  │  ` separators.
+fn cells_to_line(cells: &[Vec<(Style, String)>], row_style: Style) -> StyledLine {
+    let sep = (Style::default().fg(Color::DarkGray), "  │  ".to_string());
+    let mut spans: Vec<(Style, String)> = Vec::new();
+    for (i, cell) in cells.iter().enumerate() {
+        if i > 0 {
+            spans.push(sep.clone());
+        }
+        for (st, text) in cell {
+            let effective = if st.fg.is_none() { row_style } else { *st };
+            spans.push((effective, text.clone()));
+        }
+    }
+    StyledLine { spans }
 }
