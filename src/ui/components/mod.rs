@@ -1,3 +1,5 @@
+pub mod ai_modal;
+pub mod ai_panel;
 pub mod file_list;
 pub mod footer;
 pub mod git_modal;

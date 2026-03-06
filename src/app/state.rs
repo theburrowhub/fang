@@ -33,6 +33,24 @@ impl StyledLine {
     }
 }
 
+// ─── AI conversation ─────────────────────────────────────────────────────────
+
+/// Role in an AI conversation turn.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AiRole {
+    User,
+    Assistant,
+    /// System-generated status lines ("[done]", "[error: …]").
+    Status,
+}
+
+/// A single message in the AI conversation.
+#[derive(Debug, Clone)]
+pub struct AiMessage {
+    pub role: AiRole,
+    pub text: String,
+}
+
 // ─── PreviewState ─────────────────────────────────────────────────────────────
 
 /// What is currently shown in the preview panel.
@@ -103,6 +121,14 @@ pub enum AppMode {
         name: String,
         from_clipboard: bool,
     },
+    /// AI prompt input (activated with `i`).
+    AiPrompt {
+        prompt: String,
+    },
+    /// AI provider selection modal (activated with `I` or first-time `i`).
+    AiProviderSelect {
+        selected: usize,
+    },
 }
 
 // ─── FocusedPanel ─────────────────────────────────────────────────────────────
@@ -112,6 +138,7 @@ pub enum FocusedPanel {
     Sidebar,
     FileList,
     Preview,
+    AiChat,
 }
 
 // ─── SidebarNode ─────────────────────────────────────────────────────────────
@@ -179,10 +206,31 @@ pub struct AppState {
     /// Stdin pipe for the currently-running : command.
     /// While Some, keypresses are relayed to the child process instead of navigating.
     pub command_stdin: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
+
+    // AI integration
+    /// Currently configured AI provider (loaded from config or selected interactively).
+    pub ai_provider: Option<crate::commands::ai::AiProviderConfig>,
+    /// List of detected AI providers (populated on first detection).
+    pub ai_providers: Vec<crate::commands::ai::AiProvider>,
+    /// AI conversation history (persists across navigation).
+    pub ai_conversation: Vec<AiMessage>,
+    /// Whether the AI chat panel is visible.
+    pub ai_panel_visible: bool,
+    /// Scroll position within the AI chat panel.
+    pub ai_scroll: usize,
+    /// Maximum scroll offset (total visual lines − view height). Updated each frame.
+    pub ai_max_scroll: usize,
+    /// Whether an AI response is currently streaming.
+    pub ai_streaming: bool,
+    /// Handle to abort the in-flight AI streaming task.
+    pub ai_task_handle: Option<tokio::task::AbortHandle>,
 }
 
 impl AppState {
-    pub fn new(initial_dir: PathBuf) -> Self {
+    pub fn new(
+        initial_dir: PathBuf,
+        ai_config: Option<crate::commands::ai::AiProviderConfig>,
+    ) -> Self {
         Self {
             current_dir: initial_dir,
             entries: vec![],
@@ -206,6 +254,14 @@ impl AppState {
             should_quit: false,
             needs_terminal_clear: false,
             command_stdin: None,
+            ai_provider: ai_config,
+            ai_providers: vec![],
+            ai_conversation: vec![],
+            ai_panel_visible: false,
+            ai_scroll: usize::MAX,
+            ai_max_scroll: 0,
+            ai_streaming: false,
+            ai_task_handle: None,
         }
     }
 
@@ -271,7 +327,7 @@ mod tests {
 
     #[test]
     fn test_new_state() {
-        let state = AppState::new(PathBuf::from("."));
+        let state = AppState::new(PathBuf::from("."), None);
         assert!(state.entries.is_empty());
         assert_eq!(state.selected_index, 0);
         assert_eq!(state.mode, AppMode::Normal);
@@ -280,7 +336,7 @@ mod tests {
 
     #[test]
     fn test_visible_entries_no_filter() {
-        let mut s = AppState::new(PathBuf::from("."));
+        let mut s = AppState::new(PathBuf::from("."), None);
         s.entries = vec![make_entry("a.rs", false), make_entry("b.rs", false)];
         assert_eq!(s.visible_entries().len(), 2);
         assert_eq!(s.visible_count(), 2);
@@ -288,7 +344,7 @@ mod tests {
 
     #[test]
     fn test_visible_entries_with_filter() {
-        let mut s = AppState::new(PathBuf::from("."));
+        let mut s = AppState::new(PathBuf::from("."), None);
         s.entries = vec![
             make_entry("main.rs", false),
             make_entry("lib.rs", false),
@@ -304,7 +360,7 @@ mod tests {
 
     #[test]
     fn test_selected_entry_with_filter() {
-        let mut s = AppState::new(PathBuf::from("."));
+        let mut s = AppState::new(PathBuf::from("."), None);
         s.entries = vec![make_entry("main.rs", false), make_entry("lib.rs", false)];
         s.search_query = "rs".to_string();
         s.filtered_indices = vec![0, 1];
