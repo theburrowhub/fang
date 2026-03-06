@@ -89,21 +89,26 @@ jobs:
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
 
           if [ -z "$LAST_TAG" ]; then
-            # No tags yet — first release.
-            NEXT="0.1.0"
-          else
-            # git-cliff --bumped-version outputs the next semver tag (e.g. "v0.2.0")
-            NEXT=$(git cliff --bumped-version 2>/dev/null | sed 's/^v//' || echo "")
-          fi
-
-          if [ -z "$NEXT" ] || [ "$NEXT" = "$CURRENT" ]; then
-            echo "No releasable commits since last tag — skipping release."
-            echo "released=false" >> "$GITHUB_OUTPUT"
-            echo "version=$CURRENT"  >> "$GITHUB_OUTPUT"
-          else
-            echo "New version: $NEXT  (was $CURRENT)"
+            # No tags exist yet → this is the very first release.
+            # Use whatever version is already in Cargo.toml (no bump needed).
+            NEXT="$CURRENT"
+            echo "First release: v${NEXT}"
             echo "released=true"  >> "$GITHUB_OUTPUT"
             echo "version=$NEXT"  >> "$GITHUB_OUTPUT"
+          else
+            # Tags exist → ask git-cliff whether conventional commits warrant a bump.
+            LAST_VER=$(echo "$LAST_TAG" | sed 's/^v//')
+            NEXT=$(git cliff --bumped-version 2>/dev/null | sed 's/^v//' || echo "")
+
+            if [ -z "$NEXT" ] || [ "$NEXT" = "$LAST_VER" ]; then
+              echo "No releasable commits since $LAST_TAG — skipping release."
+              echo "released=false" >> "$GITHUB_OUTPUT"
+              echo "version=$CURRENT"  >> "$GITHUB_OUTPUT"
+            else
+              echo "Bump: $LAST_VER → $NEXT"
+              echo "released=true"  >> "$GITHUB_OUTPUT"
+              echo "version=$NEXT"  >> "$GITHUB_OUTPUT"
+            fi
           fi
 
       - name: Bump Cargo.toml version
