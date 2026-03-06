@@ -17,6 +17,13 @@ pub fn draw(frame: &mut Frame, state: &AppState) {
     components::header::render(frame, header_area, state);
     components::footer::render(frame, footer_area, state);
 
+    // If settings modal is active, render main + settings overlay
+    if matches!(state.mode, AppMode::Settings { .. }) {
+        render_main_panels(frame, main_area, state);
+        components::settings_modal::render(frame, area, state);
+        return;
+    }
+
     // If make modal is active, render main + modal overlay
     if state.mode == AppMode::MakeTarget {
         render_main_panels(frame, main_area, state);

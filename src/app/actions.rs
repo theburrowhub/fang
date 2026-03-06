@@ -44,6 +44,13 @@ pub enum Action {
     NewFileBackspace,
     CreateNewFile,
     CloseNewFile,
+    // Settings editor
+    OpenSettings,
+    SettingsNavUp,
+    SettingsNavDown,
+    SettingsIncrease,
+    SettingsDecrease,
+    CloseSettings,
     Noop,
 }
 
@@ -78,6 +85,9 @@ pub fn map_key_to_action(
             KeyCode::PageUp => Action::PreviewScrollUp,
             KeyCode::PageDown => Action::PreviewScrollDown,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                Action::OpenSettings
+            }
             KeyCode::Char(':') => Action::OpenCommandInput,
             KeyCode::Char(';') => Action::OpenExternalCommand,
             KeyCode::Char('g') | KeyCode::Char('G') => Action::OpenGitMenu,
@@ -135,6 +145,15 @@ pub fn map_key_to_action(
             KeyCode::Backspace => Action::NewFileBackspace,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
             KeyCode::Char(c) => Action::NewFileChar(c),
+            _ => Action::Noop,
+        },
+        AppMode::Settings { .. } => match key.code {
+            KeyCode::Esc | KeyCode::Enter => Action::CloseSettings,
+            KeyCode::Char('j') | KeyCode::Down => Action::SettingsNavDown,
+            KeyCode::Char('k') | KeyCode::Up => Action::SettingsNavUp,
+            KeyCode::Char('+') | KeyCode::Right => Action::SettingsIncrease,
+            KeyCode::Char('-') | KeyCode::Left => Action::SettingsDecrease,
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
             _ => Action::Noop,
         },
     }

@@ -103,6 +103,11 @@ pub enum AppMode {
         name: String,
         from_clipboard: bool,
     },
+    /// Settings editor (opened with Ctrl+S).
+    Settings {
+        selected: usize,
+        entries: Vec<crate::config::SettingEntry>,
+    },
 }
 
 // ─── FocusedPanel ─────────────────────────────────────────────────────────────
@@ -179,6 +184,10 @@ pub struct AppState {
     /// Stdin pipe for the currently-running : command.
     /// While Some, keypresses are relayed to the child process instead of navigating.
     pub command_stdin: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
+
+    // Configuration
+    /// Loaded and live-updated application configuration.
+    pub config: crate::config::Config,
 }
 
 impl AppState {
@@ -206,6 +215,7 @@ impl AppState {
             should_quit: false,
             needs_terminal_clear: false,
             command_stdin: None,
+            config: crate::config::Config::default(),
         }
     }
 

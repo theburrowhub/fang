@@ -4,4 +4,5 @@ pub mod git_modal;
 pub mod header;
 pub mod make_modal;
 pub mod preview;
+pub mod settings_modal;
 pub mod sidebar;

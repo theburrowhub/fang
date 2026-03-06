@@ -75,6 +75,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             s.extend(key_hint("l", "Enter"));
             s.extend(key_hint("/", "Search"));
             s.extend(key_hint(":", "Cmd"));
+            s.extend(key_hint("^S", "Settings"));
             s.extend(key_hint(";", "Split"));
             s.extend(key_hint("m", "Make"));
             s.extend(key_hint("g", "Git"));
@@ -108,7 +109,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         // CommandInput / ExternalCommand / NewFile handled above via early return.
         AppMode::CommandInput { .. }
         | AppMode::ExternalCommand { .. }
-        | AppMode::NewFile { .. } => vec![],
+        | AppMode::NewFile { .. }
+        | AppMode::Settings { .. } => vec![], // handled by settings_modal
     };
 
     frame.render_widget(

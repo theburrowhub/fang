@@ -16,6 +16,7 @@ use tokio::time::interval;
 
 mod app;
 mod commands;
+mod config;
 mod fs;
 mod preview;
 mod search;
@@ -684,6 +685,55 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
                 }
             });
         }
+        // ── Settings ─────────────────────────────────────────────────────────
+        Action::OpenSettings => {
+            let entries = config::entries_from_config(&state.config);
+            state.mode = app::state::AppMode::Settings {
+                selected: 0,
+                entries,
+            };
+        }
+        Action::SettingsNavDown => {
+            if let app::state::AppMode::Settings { selected, entries } = &mut state.mode {
+                if *selected < entries.len().saturating_sub(1) {
+                    *selected += 1;
+                }
+            }
+        }
+        Action::SettingsNavUp => {
+            if let app::state::AppMode::Settings { selected, .. } = &mut state.mode {
+                if *selected > 0 {
+                    *selected -= 1;
+                }
+            }
+        }
+        Action::SettingsIncrease => {
+            if let app::state::AppMode::Settings { selected, entries } = &mut state.mode {
+                if let Some(e) = entries.get_mut(*selected) {
+                    let max = e.max;
+                    e.value.increment(max);
+                }
+            }
+        }
+        Action::SettingsDecrease => {
+            if let app::state::AppMode::Settings { selected, entries } = &mut state.mode {
+                if let Some(e) = entries.get_mut(*selected) {
+                    let min = e.min;
+                    e.value.decrement(min);
+                }
+            }
+        }
+        Action::CloseSettings => {
+            if let app::state::AppMode::Settings { entries, .. } = &state.mode {
+                let entries_clone = entries.clone();
+                config::apply_entries(&mut state.config, &entries_clone);
+                let cfg = state.config.clone();
+                if let Err(e) = config::save(&cfg) {
+                    state.status_message = Some(format!("Settings save error: {}", e));
+                }
+            }
+            state.mode = app::state::AppMode::Normal;
+        }
         Action::Noop => {}
     }
 }
@@ -832,7 +882,10 @@ async fn main() -> Result<()> {
     tracing::info!("Fang starting in {:?}", initial_dir);
 
     // Initialize state
+    // Load persisted config (sync read before TUI starts — acceptable for startup)
+    let cfg = config::load();
     let mut state = AppState::new(initial_dir.clone());
+    state.config = cfg;
     state.sidebar_tree = build_sidebar_tree(&initial_dir);
 
     // Setup internal event channel (for async results from background tasks)
