@@ -4,6 +4,7 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileType {
     Directory,
+    #[allow(dead_code)]
     RegularFile,
     Symlink,
     Executable,
@@ -25,8 +26,11 @@ pub struct FileEntry {
     pub is_symlink: bool,
     pub size: u64,
     pub is_executable: bool,
+    #[allow(dead_code)]
     pub extension: Option<String>,
+    #[allow(dead_code)]
     pub file_type: FileType,
+    #[allow(dead_code)]
     pub modified: Option<std::time::SystemTime>,
 }
 
@@ -107,6 +111,7 @@ fn classify_file(
     }
 }
 
+#[allow(dead_code)]
 pub fn format_size(bytes: u64) -> String {
     if bytes == 0 {
         return "-".to_string();
@@ -126,6 +131,7 @@ pub fn format_size(bytes: u64) -> String {
     format!("{} B", bytes)
 }
 
+#[allow(dead_code)]
 pub fn get_file_icon(entry: &FileEntry) -> &'static str {
     // Usa caracteres que funcionen sin Nerd Fonts
     if entry.is_dir {

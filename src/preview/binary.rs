@@ -40,9 +40,10 @@ pub fn is_binary_by_extension(path: &Path) -> bool {
 pub fn is_binary_by_content(data: &[u8]) -> bool {
     // Check first 8KB for null bytes — their presence reliably indicates binary content
     let check_len = data.len().min(8192);
-    data[..check_len].iter().any(|&b| b == 0)
+    data[..check_len].contains(&0)
 }
 
+#[allow(dead_code)]
 pub fn is_binary_file(path: &Path) -> bool {
     if is_binary_by_extension(path) {
         return true;
@@ -68,6 +69,7 @@ pub fn get_mime_hint(path: &Path) -> String {
 /// Format a hex dump in the style of `hexdump -C`.
 /// Each line: "00000000  48 65 6c 6c 6f 20 57 6f  72 6c 64 0a           |Hello World.|"
 /// The hex column is always 49 chars wide (consistent for full and partial rows).
+#[allow(dead_code)]
 pub fn format_hex_dump(data: &[u8], max_lines: usize) -> Vec<String> {
     let mut lines = Vec::with_capacity(data.len().div_ceil(16).min(max_lines));
 

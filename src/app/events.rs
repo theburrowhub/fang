@@ -8,6 +8,7 @@ pub enum Event {
     /// Terminal key event
     Key(crossterm::event::KeyEvent),
     /// Terminal resize
+    #[allow(dead_code)]
     Resize(u16, u16),
     /// Preview loading completed (from background task)
     PreviewReady(PreviewState),
@@ -23,7 +24,7 @@ pub enum Event {
     /// Header info (git branch + dev envs) loaded for current directory
     HeaderInfoReady(HeaderInfo),
     /// Shell command completed (output streamed via MakeOutputLine; this signals completion)
-    CommandOutput { lines: Vec<String>, exit_code: i32 },
+    CommandOutput { exit_code: i32 },
     /// Line of output from a git operation
     GitOutputLine(String),
     /// Git operation completed

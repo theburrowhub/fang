@@ -72,7 +72,7 @@ fn render_main_panels(frame: &mut Frame, area: Rect, state: &AppState) {
 
 fn render_make_modal(frame: &mut Frame, area: Rect, state: &AppState) {
     // Calculate modal size
-    let modal_width = (area.width * 2 / 3).min(70).max(40);
+    let modal_width = (area.width * 2 / 3).clamp(40, 70);
     let modal_height = ((state.make_targets.len() as u16) + 6)
         .min(area.height.saturating_sub(4))
         .max(8);
@@ -97,7 +97,7 @@ fn render_git_modal(frame: &mut Frame, area: Rect, state: &AppState) {
     use crate::commands::git::N_GIT_OPS;
 
     let op_count = N_GIT_OPS as u16;
-    let modal_width = (area.width * 2 / 3).min(70).max(50);
+    let modal_width = (area.width * 2 / 3).clamp(50, 70);
     let modal_height = op_count
         .saturating_mul(2)
         .saturating_add(6)

@@ -26,6 +26,7 @@ pub fn load_directory(path: &Path) -> Result<Vec<FileEntry>> {
 }
 
 /// Verifica si un path está oculto (nombre empieza con ".")
+#[allow(dead_code)]
 pub fn is_hidden(path: &Path) -> bool {
     path.file_name()
         .and_then(|n| n.to_str())
@@ -35,6 +36,7 @@ pub fn is_hidden(path: &Path) -> bool {
 
 /// Calcula el tamaño total de un directorio recursivamente (best-effort).
 /// Limita a 10000 archivos para no ser bloqueante.
+#[allow(dead_code)]
 pub fn get_dir_size(path: &Path, max_files: usize) -> u64 {
     let mut total = 0u64;
     let mut count = 0;
@@ -66,6 +68,7 @@ pub fn get_dir_size(path: &Path, max_files: usize) -> u64 {
 }
 
 /// Obtiene el directorio padre de un path dado.
+#[allow(dead_code)]
 pub fn parent_dir(path: &Path) -> Option<PathBuf> {
     path.parent().map(|p| p.to_path_buf())
 }

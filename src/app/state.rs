@@ -12,6 +12,7 @@ pub struct MakeTarget {
     pub name: String,
     /// Description from a `## …` comment on the preceding line.
     pub description: Option<String>,
+    #[allow(dead_code)]
     pub line_number: usize,
 }
 
@@ -24,6 +25,7 @@ pub struct StyledLine {
 }
 
 impl StyledLine {
+    #[allow(dead_code)]
     pub fn plain(text: impl Into<String>) -> Self {
         Self {
             spans: vec![(ratatui::style::Style::default(), text.into())],

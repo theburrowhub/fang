@@ -8,6 +8,7 @@ use syntect::parsing::SyntaxSet;
 static SYNTAX_SET: OnceLock<SyntaxSet> = OnceLock::new();
 static THEME_SET: OnceLock<ThemeSet> = OnceLock::new();
 
+#[allow(dead_code)]
 const MAX_FILE_SIZE: u64 = 1024 * 1024; // 1MB
 const MAX_LINES: usize = 2000;
 
@@ -58,6 +59,7 @@ pub fn highlight_bytes(path: &Path, data: Vec<u8>) -> PreviewState {
 
 /// Load a text file from disk, checking size first, then highlighting.
 /// Used when the caller has not already read the file bytes.
+#[allow(dead_code)]
 pub async fn load_text_preview(path: &Path) -> PreviewState {
     // Check file size before reading
     let size = match std::fs::metadata(path) {

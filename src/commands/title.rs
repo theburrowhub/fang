@@ -16,6 +16,7 @@ pub fn set_window_title(path: &Path) {
 }
 
 /// Reset the window title to a plain "fang" on exit.
+#[allow(dead_code)]
 pub fn reset_window_title() {
     let _ = execute!(std::io::stdout(), SetTitle("fang"));
 }

@@ -3,6 +3,7 @@ use ratatui::style::{Color, Modifier, Style};
 use std::path::Path;
 
 /// Parse targets from a Makefile
+#[allow(dead_code)]
 pub fn parse_makefile_targets(content: &str) -> Vec<MakeTarget> {
     let mut targets = Vec::new();
     let mut pending_description: Option<String> = None;
@@ -11,8 +12,8 @@ pub fn parse_makefile_targets(content: &str) -> Vec<MakeTarget> {
         let trimmed = line.trim();
 
         // Check for description comment (## Description)
-        if trimmed.starts_with("## ") {
-            pending_description = Some(trimmed[3..].trim().to_string());
+        if let Some(stripped) = trimmed.strip_prefix("## ") {
+            pending_description = Some(stripped.trim().to_string());
             continue;
         } else if trimmed.starts_with('#') || trimmed.is_empty() {
             // Regular comment or empty line - clear description

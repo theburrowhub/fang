@@ -54,7 +54,8 @@ pub fn apply_search(state: &mut AppState) {
 /// original index inside `state.entries`.
 ///
 /// Returns visible entries paired with their real index in `state.entries`.
-pub fn visible_entries<'a>(state: &'a AppState) -> Vec<(usize, &'a FileEntry)> {
+#[allow(dead_code)]
+pub fn visible_entries(state: &AppState) -> Vec<(usize, &FileEntry)> {
     if state.search_query.is_empty() {
         state.entries.iter().enumerate().collect()
     } else {
@@ -67,6 +68,7 @@ pub fn visible_entries<'a>(state: &'a AppState) -> Vec<(usize, &'a FileEntry)> {
 }
 
 /// Returns the real index in `state.entries` of the currently selected entry.
+#[allow(dead_code)]
 pub fn current_entry_index(state: &AppState) -> Option<usize> {
     if state.search_query.is_empty() {
         state
@@ -79,7 +81,8 @@ pub fn current_entry_index(state: &AppState) -> Option<usize> {
 }
 
 /// Returns a reference to the currently selected `FileEntry`.
-pub fn current_entry<'a>(state: &'a AppState) -> Option<&'a FileEntry> {
+#[allow(dead_code)]
+pub fn current_entry(state: &AppState) -> Option<&FileEntry> {
     state.selected_entry()
 }
 
@@ -88,6 +91,7 @@ pub fn current_entry<'a>(state: &'a AppState) -> Option<&'a FileEntry> {
 ///
 /// The returned indices are suitable for highlighting matched characters in
 /// the file-list UI.
+#[allow(dead_code)]
 pub fn match_positions(query: &str, text: &str) -> Option<Vec<usize>> {
     if query.is_empty() {
         return None;
@@ -99,6 +103,7 @@ pub fn match_positions(query: &str, text: &str) -> Option<Vec<usize>> {
 }
 
 /// Returns the number of entries currently visible (after applying the filter).
+#[allow(dead_code)]
 pub fn visible_count(state: &AppState) -> usize {
     if state.search_query.is_empty() {
         state.entries.len()

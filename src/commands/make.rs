@@ -6,6 +6,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc::UnboundedSender;
 
 /// Verifica si existe un Makefile en el directorio dado.
+#[allow(dead_code)]
 pub fn has_makefile(dir: &Path) -> bool {
     find_makefile(dir).is_some()
 }
@@ -64,8 +65,8 @@ pub fn parse_targets_from_content(content: &str) -> Result<Vec<MakeTarget>> {
         }
 
         // Description comment "## ..."
-        if trimmed.starts_with("## ") {
-            pending_description = Some(trimmed[3..].trim().to_string());
+        if let Some(stripped) = trimmed.strip_prefix("## ") {
+            pending_description = Some(stripped.trim().to_string());
             continue;
         }
 

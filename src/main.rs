@@ -131,9 +131,7 @@ fn schedule_header_info_load(dir: &std::path::Path, tx: &UnboundedSender<Event>)
 
         let (py_result, go_result, node_result, rs_result) = tokio::join!(
             async {
-                let Some(py_path) = python_path else {
-                    return None;
-                };
+                let py_path = python_path?;
                 let out = tokio::process::Command::new(&py_path)
                     .arg("--version")
                     .output()
@@ -240,7 +238,7 @@ fn schedule_directory_load(path: PathBuf, tx: &UnboundedSender<Event>) {
 
 /// Builds the sidebar tree from the current directory path.
 /// Single-pass O(n) construction — each prefix path is built incrementally.
-fn build_sidebar_tree(current_dir: &PathBuf) -> Vec<app::state::SidebarNode> {
+fn build_sidebar_tree(current_dir: &std::path::Path) -> Vec<app::state::SidebarNode> {
     use std::path::Component;
     let mut nodes = Vec::new();
     let mut accumulated = PathBuf::new();
@@ -472,7 +470,6 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
                 state.command_stdin = Some(stdin_tx);
 
                 tokio::spawn(async move {
-                    use std::os::unix::process::CommandExt;
                     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
                     use tokio::process::Command;
 
@@ -498,10 +495,7 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
                         Ok(c) => c,
                         Err(e) => {
                             let _ = tx.send(Event::MakeOutputLine(format!("Error: {}", e)));
-                            let _ = tx.send(Event::CommandOutput {
-                                lines: vec![],
-                                exit_code: -1,
-                            });
+                            let _ = tx.send(Event::CommandOutput { exit_code: -1 });
                             return;
                         }
                     };
@@ -541,10 +535,7 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
                     let status = child.wait().await.ok();
                     let _ = tokio::join!(stdout_task, stderr_task, stdin_relay);
                     let code = status.and_then(|s| s.code()).unwrap_or(-1);
-                    let _ = tx.send(Event::CommandOutput {
-                        lines: vec![],
-                        exit_code: code,
-                    });
+                    let _ = tx.send(Event::CommandOutput { exit_code: code });
                 });
             } else {
                 state.mode = app::state::AppMode::Normal;
