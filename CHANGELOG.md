@@ -1,6 +1,42 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.2.0] — 2026-03-06
+
+### Bug Fixes
+
+- Homebrew tap step is non-fatal if HOMEBREW_TAP_TOKEN not set ([23f17a9](https://github.com/theburrowhub/fang/commit/23f17a9346e6ff0183eda6e095c38fa6b4f2e901))
+
+- Clip long preview lines at panel boundary to prevent overflow ([76bf38d](https://github.com/theburrowhub/fang/commit/76bf38d9a2390cbc97b6d931a9f32b765f3a56ee))
+
+- Ctrl+S opens settings instead of toggling sidebar ([bab6ac9](https://github.com/theburrowhub/fang/commit/bab6ac99f33c9386b108e9bb55d0519af95b1795))
+
+- Remove unused imports in settings_modal.rs ([8aa8296](https://github.com/theburrowhub/fang/commit/8aa829621d546f809b03ad538c2ce9b41a179ae4))
+
+- Consolidate git first screen — Fetch/Pull/Push/Stash get forms ([258761f](https://github.com/theburrowhub/fang/commit/258761ffdf0e4ed17aa2be7ed61fa16e57f7c514))
+
+- Log/Diff/Branches also get forms — only Status and Stash pop are direct ([b8cdee3](https://github.com/theburrowhub/fang/commit/b8cdee33bf3e3d55298e7e9cdaf3d47b2bf41223))
+
+- Stash pop merged into Stash form as SubCmd checkbox ([9566f9b](https://github.com/theburrowhub/fang/commit/9566f9bc32b89dccf2f44d6035e67dad2c7810b9))
+
+- Ci-cd.yml — remove invalid secrets.* from step if: condition ([e6c5db3](https://github.com/theburrowhub/fang/commit/e6c5db3fc8ec56523fe48e40e393c4103b0f940d))
+
+
+### Features
+
+- Render Markdown files with formatting in preview panel (#19) ([e50529b](https://github.com/theburrowhub/fang/commit/e50529b74ea45fc7ef04eeaed8b3cd88b7b92bc3))
+
+- Persistent settings system with in-app editor (Ctrl+S) ([cff13bc](https://github.com/theburrowhub/fang/commit/cff13bc7a38ecbb9bb98bdbf47b7975e2b47acbe))
+
+- H=Help panel, u=parent dir, dual-label footer (#21) ([d3344e7](https://github.com/theburrowhub/fang/commit/d3344e7b18bb99381c4e6972556def43e68e7f83))
+
+- Git menu 2-screen — form for parametrized operations ([8c9a708](https://github.com/theburrowhub/fang/commit/8c9a708769b76eb4a625b4e30226a052fdca303a))
+
+- C=copy relative path, C=copy absolute path to clipboard (#23) ([b291bb9](https://github.com/theburrowhub/fang/commit/b291bb91a4f8f99ec5548ac1a8bb8466c0266724))
+
+- Git file status indicators in file list (#24) ([74c5ca9](https://github.com/theburrowhub/fang/commit/74c5ca925c4b2e60e119570922831f76f5d33e5e))
+
+
 ## [0.1.1] — 2026-03-06
 
 ### Bug Fixes
