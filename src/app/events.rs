@@ -29,4 +29,10 @@ pub enum Event {
     GitOutputLine(String),
     /// Git operation completed
     GitDone { exit_code: i32 },
+    /// Streaming text fragment from an AI response
+    AiOutputLine(String),
+    /// AI response completed
+    AiDone,
+    /// AI providers detected (from background detection task)
+    AiProvidersDetected(Vec<crate::commands::ai::AiProvider>),
 }

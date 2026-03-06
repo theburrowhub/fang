@@ -33,6 +33,24 @@ impl StyledLine {
     }
 }
 
+// ─── AI conversation ─────────────────────────────────────────────────────────
+
+/// Role in an AI conversation turn.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AiRole {
+    User,
+    Assistant,
+    /// System-generated status lines ("[done]", "[error: …]").
+    Status,
+}
+
+/// A single message in the AI conversation.
+#[derive(Debug, Clone)]
+pub struct AiMessage {
+    pub role: AiRole,
+    pub text: String,
+}
+
 // ─── PreviewState ─────────────────────────────────────────────────────────────
 
 /// What is currently shown in the preview panel.
@@ -103,6 +121,14 @@ pub enum AppMode {
         name: String,
         from_clipboard: bool,
     },
+    /// AI prompt input (activated with `i`).
+    AiPrompt {
+        prompt: String,
+    },
+    /// AI provider selection modal (activated with `I` or first-time `i`).
+    AiProviderSelect {
+        selected: usize,
+    },
 }
 
 // ─── FocusedPanel ─────────────────────────────────────────────────────────────
@@ -112,6 +138,7 @@ pub enum FocusedPanel {
     Sidebar,
     FileList,
     Preview,
+    AiChat,
 }
 
 // ─── SidebarNode ─────────────────────────────────────────────────────────────
@@ -179,6 +206,24 @@ pub struct AppState {
     /// Stdin pipe for the currently-running : command.
     /// While Some, keypresses are relayed to the child process instead of navigating.
     pub command_stdin: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
+
+    // AI integration
+    /// Currently configured AI provider (loaded from config or selected interactively).
+    pub ai_provider: Option<crate::commands::ai::AiProviderConfig>,
+    /// List of detected AI providers (populated on first detection).
+    pub ai_providers: Vec<crate::commands::ai::AiProvider>,
+    /// AI conversation history (persists across navigation).
+    pub ai_conversation: Vec<AiMessage>,
+    /// Whether the AI chat panel is visible.
+    pub ai_panel_visible: bool,
+    /// Scroll position within the AI chat panel.
+    pub ai_scroll: usize,
+    /// Total display lines in the AI chat (set by the renderer each frame).
+    pub ai_total_lines: std::cell::Cell<usize>,
+    /// Visible height of the AI chat inner area (set by the renderer each frame).
+    pub ai_view_height: std::cell::Cell<usize>,
+    /// Whether an AI response is currently streaming.
+    pub ai_streaming: bool,
 }
 
 impl AppState {
@@ -206,6 +251,14 @@ impl AppState {
             should_quit: false,
             needs_terminal_clear: false,
             command_stdin: None,
+            ai_provider: crate::commands::ai::load_config(),
+            ai_providers: vec![],
+            ai_conversation: vec![],
+            ai_panel_visible: false,
+            ai_scroll: usize::MAX,
+            ai_total_lines: std::cell::Cell::new(0),
+            ai_view_height: std::cell::Cell::new(0),
+            ai_streaming: false,
         }
     }
 
