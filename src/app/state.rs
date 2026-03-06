@@ -33,6 +33,24 @@ impl StyledLine {
     }
 }
 
+// ─── AI conversation ─────────────────────────────────────────────────────────
+
+/// Role in an AI conversation turn.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AiRole {
+    User,
+    Assistant,
+    /// System-generated status lines ("[done]", "[error: …]").
+    Status,
+}
+
+/// A single message in the AI conversation.
+#[derive(Debug, Clone)]
+pub struct AiMessage {
+    pub role: AiRole,
+    pub text: String,
+}
+
 // ─── PreviewState ─────────────────────────────────────────────────────────────
 
 /// What is currently shown in the preview panel.
@@ -122,6 +140,14 @@ pub enum AppMode {
         selected: usize,
         entries: Vec<crate::config::SettingEntry>,
     },
+    /// AI prompt input (activated with `i`).
+    AiPrompt {
+        prompt: String,
+    },
+    /// AI provider selection modal (activated with `I` or first-time `i`).
+    AiProviderSelect {
+        selected: usize,
+    },
 }
 
 // ─── FocusedPanel ─────────────────────────────────────────────────────────────
@@ -131,6 +157,7 @@ pub enum FocusedPanel {
     Sidebar,
     FileList,
     Preview,
+    AiChat,
 }
 
 // ─── SidebarNode ─────────────────────────────────────────────────────────────
@@ -252,6 +279,24 @@ pub struct AppState {
     // Git file status
     /// Map from absolute path → git status, refreshed on every directory navigation.
     pub git_file_status: std::collections::HashMap<std::path::PathBuf, GitFileStatus>,
+
+    // AI integration
+    /// Currently configured AI provider (loaded from config or selected interactively).
+    pub ai_provider: Option<crate::commands::ai::AiProviderConfig>,
+    /// List of detected AI providers (populated on first detection).
+    pub ai_providers: Vec<crate::commands::ai::AiProvider>,
+    /// AI conversation history (persists across navigation).
+    pub ai_conversation: Vec<AiMessage>,
+    /// Whether the AI chat panel is visible.
+    pub ai_panel_visible: bool,
+    /// Scroll position within the AI chat panel.
+    pub ai_scroll: usize,
+    /// Total display lines in the AI chat (set by the renderer each frame).
+    pub ai_total_lines: std::cell::Cell<usize>,
+    /// Visible height of the AI chat inner area (set by the renderer each frame).
+    pub ai_view_height: std::cell::Cell<usize>,
+    /// Whether an AI response is currently streaming.
+    pub ai_streaming: bool,
 }
 
 impl AppState {
@@ -281,6 +326,14 @@ impl AppState {
             command_stdin: None,
             config: crate::config::Config::default(),
             git_file_status: std::collections::HashMap::new(),
+            ai_provider: crate::commands::ai::load_config(),
+            ai_providers: vec![],
+            ai_conversation: vec![],
+            ai_panel_visible: false,
+            ai_scroll: usize::MAX,
+            ai_total_lines: std::cell::Cell::new(0),
+            ai_view_height: std::cell::Cell::new(0),
+            ai_streaming: false,
         }
     }
 
