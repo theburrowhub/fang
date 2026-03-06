@@ -613,7 +613,8 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
                         let dir = state.current_dir.clone();
                         let tx2 = tx.clone();
                         state.make_output.clear();
-                        state.preview_state = app::state::PreviewState::MakeOutput { output: vec![] };
+                        state.preview_state =
+                            app::state::PreviewState::MakeOutput { output: vec![] };
                         state.preview_scroll = 0;
                         state.mode = app::state::AppMode::Normal;
                         tokio::spawn(async move {
@@ -705,7 +706,12 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
             }
         }
         Action::GitFormTabNext => {
-            if let app::state::AppMode::GitForm { ref mut focused, op_index, .. } = state.mode {
+            if let app::state::AppMode::GitForm {
+                ref mut focused,
+                op_index,
+                ..
+            } = state.mode
+            {
                 let ops = commands::git::git_operations();
                 if let Some(op) = ops.get(op_index) {
                     *focused = (*focused + 1) % op.params.len().max(1);
@@ -713,7 +719,12 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
             }
         }
         Action::GitFormTabPrev => {
-            if let app::state::AppMode::GitForm { ref mut focused, op_index, .. } = state.mode {
+            if let app::state::AppMode::GitForm {
+                ref mut focused,
+                op_index,
+                ..
+            } = state.mode
+            {
                 let ops = commands::git::git_operations();
                 if let Some(op) = ops.get(op_index) {
                     let n = op.params.len().max(1);
@@ -722,28 +733,48 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
             }
         }
         Action::GitFormToggle => {
-            if let app::state::AppMode::GitForm { focused, ref mut values, .. } = state.mode {
+            if let app::state::AppMode::GitForm {
+                focused,
+                ref mut values,
+                ..
+            } = state.mode
+            {
                 if let Some(commands::git::GitParamValue::Bool(b)) = values.get_mut(focused) {
                     *b = !*b;
                 }
             }
         }
         Action::GitFormChar(ch) => {
-            if let app::state::AppMode::GitForm { focused, ref mut values, .. } = state.mode {
+            if let app::state::AppMode::GitForm {
+                focused,
+                ref mut values,
+                ..
+            } = state.mode
+            {
                 if let Some(commands::git::GitParamValue::Text(s)) = values.get_mut(focused) {
                     s.push(*ch);
                 }
             }
         }
         Action::GitFormBackspace => {
-            if let app::state::AppMode::GitForm { focused, ref mut values, .. } = state.mode {
+            if let app::state::AppMode::GitForm {
+                focused,
+                ref mut values,
+                ..
+            } = state.mode
+            {
                 if let Some(commands::git::GitParamValue::Text(s)) = values.get_mut(focused) {
                     s.pop();
                 }
             }
         }
         Action::RunGitForm => {
-            if let app::state::AppMode::GitForm { op_index, ref values, .. } = state.mode {
+            if let app::state::AppMode::GitForm {
+                op_index,
+                ref values,
+                ..
+            } = state.mode
+            {
                 let ops = commands::git::git_operations();
                 if let Some(&op) = ops.get(op_index) {
                     let args = commands::git::build_args(op, values);

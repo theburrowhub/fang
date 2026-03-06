@@ -17,10 +17,7 @@ pub enum GitParamKind {
         flag: Option<&'static str>,
     },
     /// A boolean checkbox.  When true, `flag` is appended to the args.
-    Bool {
-        flag: &'static str,
-        default: bool,
-    },
+    Bool { flag: &'static str, default: bool },
 }
 
 /// Static definition of one parameter in a git form.
@@ -58,11 +55,19 @@ pub enum GitParamValue {
 impl GitParamValue {
     #[allow(dead_code)]
     pub fn as_text(&self) -> Option<&str> {
-        if let Self::Text(s) = self { Some(s) } else { None }
+        if let Self::Text(s) = self {
+            Some(s)
+        } else {
+            None
+        }
     }
     #[allow(dead_code)]
     pub fn as_bool(&self) -> Option<bool> {
-        if let Self::Bool(b) = self { Some(*b) } else { None }
+        if let Self::Bool(b) = self {
+            Some(*b)
+        } else {
+            None
+        }
     }
 }
 
@@ -83,15 +88,11 @@ pub fn build_args(op: GitOperation, values: &[GitParamValue]) -> Vec<String> {
 
     for (def, val) in op.params.iter().zip(values.iter()) {
         match (&def.kind, val) {
-            (GitParamKind::Text { flag: Some(f), .. }, GitParamValue::Text(s))
-                if !s.is_empty() =>
-            {
+            (GitParamKind::Text { flag: Some(f), .. }, GitParamValue::Text(s)) if !s.is_empty() => {
                 args.push(f.to_string());
                 args.push(s.clone());
             }
-            (GitParamKind::Text { flag: None, .. }, GitParamValue::Text(s))
-                if !s.is_empty() =>
-            {
+            (GitParamKind::Text { flag: None, .. }, GitParamValue::Text(s)) if !s.is_empty() => {
                 args.push(s.clone());
             }
             (GitParamKind::Bool { flag, .. }, GitParamValue::Bool(true)) => {
@@ -109,136 +110,373 @@ pub fn build_args(op: GitOperation, values: &[GitParamValue]) -> Vec<String> {
 static COMMIT_PARAMS: &[GitParamDef] = &[
     GitParamDef {
         label: "Message",
-        kind: GitParamKind::Text { placeholder: "Commit message…", flag: Some("-m") },
+        kind: GitParamKind::Text {
+            placeholder: "Commit message…",
+            flag: Some("-m"),
+        },
     },
     GitParamDef {
         label: "Amend last commit",
-        kind: GitParamKind::Bool { flag: "--amend", default: false },
+        kind: GitParamKind::Bool {
+            flag: "--amend",
+            default: false,
+        },
     },
     GitParamDef {
         label: "Allow empty commit",
-        kind: GitParamKind::Bool { flag: "--allow-empty", default: false },
+        kind: GitParamKind::Bool {
+            flag: "--allow-empty",
+            default: false,
+        },
     },
     GitParamDef {
         label: "No edit (keep last message)",
-        kind: GitParamKind::Bool { flag: "--no-edit", default: false },
+        kind: GitParamKind::Bool {
+            flag: "--no-edit",
+            default: false,
+        },
     },
 ];
 
 static ADD_PARAMS: &[GitParamDef] = &[
     GitParamDef {
         label: "Path",
-        kind: GitParamKind::Text { placeholder: ". (all files)", flag: None },
+        kind: GitParamKind::Text {
+            placeholder: ". (all files)",
+            flag: None,
+        },
     },
     GitParamDef {
         label: "Stage all tracked + untracked",
-        kind: GitParamKind::Bool { flag: "-A", default: true },
+        kind: GitParamKind::Bool {
+            flag: "-A",
+            default: true,
+        },
     },
     GitParamDef {
         label: "Interactive patch mode",
-        kind: GitParamKind::Bool { flag: "-p", default: false },
+        kind: GitParamKind::Bool {
+            flag: "-p",
+            default: false,
+        },
     },
 ];
 
 static SWITCH_PARAMS: &[GitParamDef] = &[
     GitParamDef {
         label: "Branch name",
-        kind: GitParamKind::Text { placeholder: "branch-name", flag: None },
+        kind: GitParamKind::Text {
+            placeholder: "branch-name",
+            flag: None,
+        },
     },
     GitParamDef {
         label: "Create new branch (-c)",
-        kind: GitParamKind::Bool { flag: "-c", default: false },
+        kind: GitParamKind::Bool {
+            flag: "-c",
+            default: false,
+        },
     },
 ];
 
 static MERGE_PARAMS: &[GitParamDef] = &[
     GitParamDef {
         label: "Branch to merge",
-        kind: GitParamKind::Text { placeholder: "branch-name", flag: None },
+        kind: GitParamKind::Text {
+            placeholder: "branch-name",
+            flag: None,
+        },
     },
     GitParamDef {
         label: "No fast-forward (always create merge commit)",
-        kind: GitParamKind::Bool { flag: "--no-ff", default: false },
+        kind: GitParamKind::Bool {
+            flag: "--no-ff",
+            default: false,
+        },
     },
     GitParamDef {
         label: "Squash commits into one",
-        kind: GitParamKind::Bool { flag: "--squash", default: false },
+        kind: GitParamKind::Bool {
+            flag: "--squash",
+            default: false,
+        },
     },
 ];
 
 static REBASE_PARAMS: &[GitParamDef] = &[
     GitParamDef {
         label: "Onto branch/commit",
-        kind: GitParamKind::Text { placeholder: "main", flag: None },
+        kind: GitParamKind::Text {
+            placeholder: "main",
+            flag: None,
+        },
     },
     GitParamDef {
         label: "Interactive (-i)",
-        kind: GitParamKind::Bool { flag: "-i", default: false },
+        kind: GitParamKind::Bool {
+            flag: "-i",
+            default: false,
+        },
     },
 ];
 
 static RESET_PARAMS: &[GitParamDef] = &[
     GitParamDef {
         label: "Commit (default HEAD)",
-        kind: GitParamKind::Text { placeholder: "HEAD", flag: None },
+        kind: GitParamKind::Text {
+            placeholder: "HEAD",
+            flag: None,
+        },
     },
     GitParamDef {
         label: "--soft  (keep staged changes)",
-        kind: GitParamKind::Bool { flag: "--soft", default: false },
+        kind: GitParamKind::Bool {
+            flag: "--soft",
+            default: false,
+        },
     },
     GitParamDef {
         label: "--hard  (discard all changes)",
-        kind: GitParamKind::Bool { flag: "--hard", default: false },
+        kind: GitParamKind::Bool {
+            flag: "--hard",
+            default: false,
+        },
     },
 ];
 
 static TAG_PARAMS: &[GitParamDef] = &[
     GitParamDef {
         label: "Tag name",
-        kind: GitParamKind::Text { placeholder: "v1.0.0", flag: None },
+        kind: GitParamKind::Text {
+            placeholder: "v1.0.0",
+            flag: None,
+        },
     },
     GitParamDef {
         label: "Annotated tag (-a)",
-        kind: GitParamKind::Bool { flag: "-a", default: false },
+        kind: GitParamKind::Bool {
+            flag: "-a",
+            default: false,
+        },
     },
     GitParamDef {
         label: "Message (for annotated tags)",
-        kind: GitParamKind::Text { placeholder: "Tag message…", flag: Some("-m") },
+        kind: GitParamKind::Text {
+            placeholder: "Tag message…",
+            flag: Some("-m"),
+        },
     },
 ];
 
+// ── New: fetch / pull / push / stash forms ───────────────────────────────────
+
+static FETCH_PARAMS: &[GitParamDef] = &[
+    GitParamDef {
+        label: "Remote",
+        kind: GitParamKind::Text {
+            placeholder: "origin",
+            flag: None,
+        },
+    },
+    GitParamDef {
+        label: "Fetch all remotes (--all)",
+        kind: GitParamKind::Bool {
+            flag: "--all",
+            default: false,
+        },
+    },
+    GitParamDef {
+        label: "Prune deleted remote branches",
+        kind: GitParamKind::Bool {
+            flag: "--prune",
+            default: true,
+        },
+    },
+];
+
+static PULL_PARAMS: &[GitParamDef] = &[
+    GitParamDef {
+        label: "Remote",
+        kind: GitParamKind::Text {
+            placeholder: "origin",
+            flag: None,
+        },
+    },
+    GitParamDef {
+        label: "Branch",
+        kind: GitParamKind::Text {
+            placeholder: "(current)",
+            flag: None,
+        },
+    },
+    GitParamDef {
+        label: "Rebase instead of merge (--rebase)",
+        kind: GitParamKind::Bool {
+            flag: "--rebase",
+            default: false,
+        },
+    },
+    GitParamDef {
+        label: "Fast-forward only (--ff-only)",
+        kind: GitParamKind::Bool {
+            flag: "--ff-only",
+            default: false,
+        },
+    },
+];
+
+static PUSH_PARAMS: &[GitParamDef] = &[
+    GitParamDef {
+        label: "Remote",
+        kind: GitParamKind::Text {
+            placeholder: "origin",
+            flag: None,
+        },
+    },
+    GitParamDef {
+        label: "Branch",
+        kind: GitParamKind::Text {
+            placeholder: "(current)",
+            flag: None,
+        },
+    },
+    GitParamDef {
+        label: "Set upstream (-u / --set-upstream)",
+        kind: GitParamKind::Bool {
+            flag: "--set-upstream",
+            default: false,
+        },
+    },
+    GitParamDef {
+        label: "Force with lease (safe force push)",
+        kind: GitParamKind::Bool {
+            flag: "--force-with-lease",
+            default: false,
+        },
+    },
+    GitParamDef {
+        label: "Force (--force)",
+        kind: GitParamKind::Bool {
+            flag: "--force",
+            default: false,
+        },
+    },
+];
+
+static STASH_PARAMS: &[GitParamDef] = &[
+    GitParamDef {
+        label: "Message",
+        kind: GitParamKind::Text {
+            placeholder: "WIP: …",
+            flag: Some("-m"),
+        },
+    },
+    GitParamDef {
+        label: "Include untracked files (-u)",
+        kind: GitParamKind::Bool {
+            flag: "-u",
+            default: false,
+        },
+    },
+];
+
+// ── Full catalogue ────────────────────────────────────────────────────────────
+
 /// Full list of git operations shown in the first screen.
+///
+/// Operations without `params` execute immediately on Enter.
+/// Operations with `params` open the form (second screen).
 pub fn git_operations() -> Vec<GitOperation> {
     vec![
-        // ── Read-only / safe ─────────────────────────────────────────────
-        GitOperation { label: "Status",                   base_args: &["status"],                       params: &[] },
-        GitOperation { label: "Log (last 20)",            base_args: &["log", "--oneline", "-20"],       params: &[] },
-        GitOperation { label: "Diff (stat)",              base_args: &["diff", "--stat"],                params: &[] },
-        GitOperation { label: "List branches",            base_args: &["branch", "-a"],                  params: &[] },
-        // ── Fetch / pull / push ──────────────────────────────────────────
-        GitOperation { label: "Fetch",                    base_args: &["fetch"],                         params: &[] },
-        GitOperation { label: "Fetch all (prune)",        base_args: &["fetch", "--all", "--prune"],     params: &[] },
-        GitOperation { label: "Pull",                     base_args: &["pull"],                          params: &[] },
-        GitOperation { label: "Pull (rebase)",            base_args: &["pull", "--rebase"],              params: &[] },
-        GitOperation { label: "Push",                     base_args: &["push"],                          params: &[] },
-        GitOperation { label: "Push (force-with-lease)",  base_args: &["push", "--force-with-lease"],    params: &[] },
-        GitOperation { label: "Push new branch…",        base_args: &["push", "-u", "origin", "HEAD"],  params: &[] },
-        // ── Stash ────────────────────────────────────────────────────────
-        GitOperation { label: "Stash",                    base_args: &["stash"],                         params: &[] },
-        GitOperation { label: "Stash pop",                base_args: &["stash", "pop"],                  params: &[] },
-        // ── Form operations (show second screen) ─────────────────────────
-        GitOperation { label: "Add…",                    base_args: &["add"],                            params: ADD_PARAMS },
-        GitOperation { label: "Commit…",                 base_args: &["commit"],                         params: COMMIT_PARAMS },
-        GitOperation { label: "Switch / Checkout…",      base_args: &["switch"],                        params: SWITCH_PARAMS },
-        GitOperation { label: "Merge…",                  base_args: &["merge"],                          params: MERGE_PARAMS },
-        GitOperation { label: "Rebase…",                 base_args: &["rebase"],                         params: REBASE_PARAMS },
-        GitOperation { label: "Reset…",                  base_args: &["reset"],                          params: RESET_PARAMS },
-        GitOperation { label: "Tag…",                    base_args: &["tag"],                             params: TAG_PARAMS },
+        // ── Inspect ───────────────────────────────────────────────────────
+        GitOperation {
+            label: "Status",
+            base_args: &["status"],
+            params: &[],
+        },
+        GitOperation {
+            label: "Log (last 20)",
+            base_args: &["log", "--oneline", "-20"],
+            params: &[],
+        },
+        GitOperation {
+            label: "Diff (stat)",
+            base_args: &["diff", "--stat"],
+            params: &[],
+        },
+        GitOperation {
+            label: "List branches",
+            base_args: &["branch", "-a"],
+            params: &[],
+        },
+        // ── Fetch / pull / push — all through forms ───────────────────────
+        GitOperation {
+            label: "Fetch…",
+            base_args: &["fetch"],
+            params: FETCH_PARAMS,
+        },
+        GitOperation {
+            label: "Pull…",
+            base_args: &["pull"],
+            params: PULL_PARAMS,
+        },
+        GitOperation {
+            label: "Push…",
+            base_args: &["push"],
+            params: PUSH_PARAMS,
+        },
+        // ── Stash ─────────────────────────────────────────────────────────
+        GitOperation {
+            label: "Stash…",
+            base_args: &["stash"],
+            params: STASH_PARAMS,
+        },
+        GitOperation {
+            label: "Stash pop",
+            base_args: &["stash", "pop"],
+            params: &[],
+        },
+        // ── Write operations — all through forms ──────────────────────────
+        GitOperation {
+            label: "Add…",
+            base_args: &["add"],
+            params: ADD_PARAMS,
+        },
+        GitOperation {
+            label: "Commit…",
+            base_args: &["commit"],
+            params: COMMIT_PARAMS,
+        },
+        GitOperation {
+            label: "Switch…",
+            base_args: &["switch"],
+            params: SWITCH_PARAMS,
+        },
+        GitOperation {
+            label: "Merge…",
+            base_args: &["merge"],
+            params: MERGE_PARAMS,
+        },
+        GitOperation {
+            label: "Rebase…",
+            base_args: &["rebase"],
+            params: REBASE_PARAMS,
+        },
+        GitOperation {
+            label: "Reset…",
+            base_args: &["reset"],
+            params: RESET_PARAMS,
+        },
+        GitOperation {
+            label: "Tag…",
+            base_args: &["tag"],
+            params: TAG_PARAMS,
+        },
     ]
 }
 
 /// Total number of git operations — used for modal height calculation.
-pub const N_GIT_OPS: usize = 20;
+pub const N_GIT_OPS: usize = 16;
 
 // ── Async runner ─────────────────────────────────────────────────────────────
 
@@ -340,7 +578,7 @@ mod tests {
     fn test_direct_ops_have_no_params() {
         let ops = git_operations();
         assert!(!ops[0].has_form()); // status
-        assert!(!ops[4].has_form()); // fetch
+        assert!(!ops[3].has_form()); // list branches
     }
 
     #[test]

@@ -20,7 +20,7 @@ pub fn draw(frame: &mut Frame, state: &AppState) {
     // Git form overlay (second screen)
     if matches!(state.mode, AppMode::GitForm { .. }) {
         render_main_panels(frame, main_area, state);
-        render_git_modal(frame, area, state);   // keep first screen dimmed behind
+        render_git_modal(frame, area, state); // keep first screen dimmed behind
         components::git_form::render(frame, area, state);
         return;
     }

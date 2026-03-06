@@ -24,12 +24,14 @@ pub struct KeyBinding {
 
 impl KeyBinding {
     /// Entry shown only in the Help panel, not in the footer.
-    const fn help_only(
-        mode: &'static str,
-        key: &'static str,
-        description: &'static str,
-    ) -> Self {
-        Self { mode, key, description, short: description, show_in_footer: false }
+    const fn help_only(mode: &'static str, key: &'static str, description: &'static str) -> Self {
+        Self {
+            mode,
+            key,
+            description,
+            short: description,
+            show_in_footer: false,
+        }
     }
 
     /// Entry shown in both the footer and the Help panel.
@@ -39,7 +41,13 @@ impl KeyBinding {
         description: &'static str,
         short: &'static str,
     ) -> Self {
-        Self { mode, key, description, short, show_in_footer: true }
+        Self {
+            mode,
+            key,
+            description,
+            short,
+            show_in_footer: true,
+        }
     }
 }
 
@@ -47,69 +55,59 @@ impl KeyBinding {
 pub fn all_bindings() -> Vec<KeyBinding> {
     vec![
         // ── Normal mode — navigation ──────────────────────────────────────
-        KeyBinding::help_only("Normal", "j / ↓",        "Move down"),
-        KeyBinding::help_only("Normal", "k / ↑",        "Move up"),
-        KeyBinding::footer(   "Normal", "u / ←",        "Parent directory",       "Up"),
-        KeyBinding::help_only("Normal", "l / → / Enter","Enter directory"),
-        KeyBinding::help_only("Normal", "Tab",           "Cycle panel focus"),
-        KeyBinding::help_only("Normal", "PgUp / PgDn",  "Scroll preview"),
-
+        KeyBinding::help_only("Normal", "j / ↓", "Move down"),
+        KeyBinding::help_only("Normal", "k / ↑", "Move up"),
+        KeyBinding::footer("Normal", "u / ←", "Parent directory", "Up"),
+        KeyBinding::help_only("Normal", "l / → / Enter", "Enter directory"),
+        KeyBinding::help_only("Normal", "Tab", "Cycle panel focus"),
+        KeyBinding::help_only("Normal", "PgUp / PgDn", "Scroll preview"),
         // ── Normal mode — panels ──────────────────────────────────────────
-        KeyBinding::help_only("Normal", "s",             "Toggle sidebar"),
-        KeyBinding::help_only("Normal", "p",             "Toggle preview"),
-
+        KeyBinding::help_only("Normal", "s", "Toggle sidebar"),
+        KeyBinding::help_only("Normal", "p", "Toggle preview"),
         // ── Normal mode — features ────────────────────────────────────────
-        KeyBinding::footer("Normal", "/",       "Fuzzy search",               "Search"),
-        KeyBinding::footer("Normal", ":",       "Run shell command",           "Run"),
-        KeyBinding::footer("Normal", ";",       "Open in terminal split",      "Split"),
-        KeyBinding::footer("Normal", "m",       "Makefile targets",            "Make"),
-        KeyBinding::footer("Normal", "g",       "Git operations",              "Git"),
-        KeyBinding::footer("Normal", "o",       "Open with default app",       "Open"),
-        KeyBinding::footer("Normal", "n",       "New empty file",              "New"),
-        KeyBinding::help_only("Normal", "N",    "New file from clipboard"),
-        KeyBinding::footer("Normal", "Ctrl+S",  "Settings",                   "Settings"),
-        KeyBinding::footer("Normal", "h",       "Help (this panel)",           "Help"),
-        KeyBinding::footer("Normal", "q",       "Quit",                        "Quit"),
-        KeyBinding::help_only("Normal", "Ctrl+C","Quit"),
-
+        KeyBinding::footer("Normal", "/", "Fuzzy search", "Search"),
+        KeyBinding::footer("Normal", ":", "Run shell command", "Run"),
+        KeyBinding::footer("Normal", ";", "Open in terminal split", "Split"),
+        KeyBinding::footer("Normal", "m", "Makefile targets", "Make"),
+        KeyBinding::footer("Normal", "g", "Git operations", "Git"),
+        KeyBinding::footer("Normal", "o", "Open with default app", "Open"),
+        KeyBinding::footer("Normal", "n", "New empty file", "New"),
+        KeyBinding::help_only("Normal", "N", "New file from clipboard"),
+        KeyBinding::footer("Normal", "Ctrl+S", "Settings", "Settings"),
+        KeyBinding::footer("Normal", "h", "Help (this panel)", "Help"),
+        KeyBinding::footer("Normal", "q", "Quit", "Quit"),
+        KeyBinding::help_only("Normal", "Ctrl+C", "Quit"),
         // ── Search mode ───────────────────────────────────────────────────
-        KeyBinding::footer("Search", "Enter",   "Open selected",               "Select"),
-        KeyBinding::footer("Search", "Esc",     "Cancel search",               "Cancel"),
-        KeyBinding::footer("Search", "↑ / ↓",  "Navigate results",            "Nav"),
+        KeyBinding::footer("Search", "Enter", "Open selected", "Select"),
+        KeyBinding::footer("Search", "Esc", "Cancel search", "Cancel"),
+        KeyBinding::footer("Search", "↑ / ↓", "Navigate results", "Nav"),
         KeyBinding::help_only("Search", "Backspace", "Delete character"),
-
         // ── Make targets modal ────────────────────────────────────────────
-        KeyBinding::footer("Make", "Enter",     "Run selected target",         "Run"),
-        KeyBinding::footer("Make", "Esc",       "Close modal",                 "Close"),
-        KeyBinding::footer("Make", "j / k",     "Navigate targets",            "Nav"),
-
+        KeyBinding::footer("Make", "Enter", "Run selected target", "Run"),
+        KeyBinding::footer("Make", "Esc", "Close modal", "Close"),
+        KeyBinding::footer("Make", "j / k", "Navigate targets", "Nav"),
         // ── Git operations modal ──────────────────────────────────────────
-        KeyBinding::footer("Git",  "Enter",     "Run selected operation",      "Run"),
-        KeyBinding::footer("Git",  "Esc",       "Close modal",                 "Close"),
-        KeyBinding::footer("Git",  "j / k",     "Navigate operations",         "Nav"),
-
+        KeyBinding::footer("Git", "Enter", "Run selected operation", "Run"),
+        KeyBinding::footer("Git", "Esc", "Close modal", "Close"),
+        KeyBinding::footer("Git", "j / k", "Navigate operations", "Nav"),
         // ── Shell command input ───────────────────────────────────────────
-        KeyBinding::footer("Command", "Enter",  "Execute command",             "Run"),
-        KeyBinding::footer("Command", "Esc",    "Cancel",                      "Cancel"),
-
+        KeyBinding::footer("Command", "Enter", "Execute command", "Run"),
+        KeyBinding::footer("Command", "Esc", "Cancel", "Cancel"),
         // ── External split ────────────────────────────────────────────────
-        KeyBinding::footer("Split",  "Enter",   "Open command in split",       "Open"),
-        KeyBinding::footer("Split",  "Esc",     "Cancel",                      "Cancel"),
-
+        KeyBinding::footer("Split", "Enter", "Open command in split", "Open"),
+        KeyBinding::footer("Split", "Esc", "Cancel", "Cancel"),
         // ── New file dialog ───────────────────────────────────────────────
-        KeyBinding::footer("NewFile","Enter",   "Create file",                 "Create"),
-        KeyBinding::footer("NewFile","Esc",     "Cancel",                      "Cancel"),
-
+        KeyBinding::footer("NewFile", "Enter", "Create file", "Create"),
+        KeyBinding::footer("NewFile", "Esc", "Cancel", "Cancel"),
         // ── Settings modal ────────────────────────────────────────────────
-        KeyBinding::footer("Settings","+ / →",  "Increase value",             "+"),
-        KeyBinding::footer("Settings","- / ←",  "Decrease value",             "−"),
-        KeyBinding::footer("Settings","j / k",  "Navigate settings",          "Nav"),
-        KeyBinding::footer("Settings","Esc",    "Save and close",             "Save"),
-
+        KeyBinding::footer("Settings", "+ / →", "Increase value", "+"),
+        KeyBinding::footer("Settings", "- / ←", "Decrease value", "−"),
+        KeyBinding::footer("Settings", "j / k", "Navigate settings", "Nav"),
+        KeyBinding::footer("Settings", "Esc", "Save and close", "Save"),
         // ── Help panel ────────────────────────────────────────────────────
-        KeyBinding::footer("Help",   "h / Esc", "Close help panel",           "Close"),
-        KeyBinding::help_only("Help","j / k",   "Scroll line by line"),
-        KeyBinding::help_only("Help","PgUp/PgDn","Scroll page"),
+        KeyBinding::footer("Help", "h / Esc", "Close help panel", "Close"),
+        KeyBinding::help_only("Help", "j / k", "Scroll line by line"),
+        KeyBinding::help_only("Help", "PgUp/PgDn", "Scroll page"),
     ]
 }
 
