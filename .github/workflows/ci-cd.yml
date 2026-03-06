@@ -275,11 +275,15 @@ jobs:
       - name: Update Homebrew tap
         # Requires TAP_GITHUB_TOKEN secret (PAT with repo scope on theburrowhub/homebrew-tap).
         # Add it at: https://github.com/theburrowhub/fang/settings/secrets/actions
-        if: secrets.TAP_GITHUB_TOKEN != ''
+        # NOTE: secrets.* cannot be used in if: expressions — guard is in the run script.
         continue-on-error: true
         env:
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
         run: |
+          if [ -z "${TAP_GITHUB_TOKEN}" ]; then
+            echo "TAP_GITHUB_TOKEN not configured — skipping homebrew-tap update."
+            exit 0
+          fi
           V="${{ needs.release-prep.outputs.version }}"
           git clone \
             "https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/theburrowhub/homebrew-tap.git" \
