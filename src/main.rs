@@ -484,11 +484,15 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
 
                     // setsid() creates a new session with no controlling terminal so the
                     // interactive shell cannot call tcsetpgrp() against fang's terminal.
-                    unsafe {
-                        cmd_builder.pre_exec(|| {
-                            libc::setsid();
-                            Ok(())
-                        });
+                    // Only available on Unix; on Windows we skip this (no SIGTTOU concept).
+                    #[cfg(unix)]
+                    {
+                        unsafe {
+                            cmd_builder.pre_exec(|| {
+                                libc::setsid();
+                                Ok(())
+                            });
+                        }
                     }
 
                     let mut child = match cmd_builder.spawn() {

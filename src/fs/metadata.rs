@@ -1,3 +1,4 @@
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
@@ -51,7 +52,10 @@ impl FileEntry {
         };
 
         let size = if is_dir { 0 } else { metadata.len() };
+        #[cfg(unix)]
         let is_executable = !is_dir && (metadata.permissions().mode() & 0o111 != 0);
+        #[cfg(not(unix))]
+        let is_executable = false;
         // Compute extension as Option<String> once; borrow it for classify_file.
         // to_string_lossy() returns a Cow<str>; to_lowercase() produces a String
         // directly, so no further conversion is needed.
