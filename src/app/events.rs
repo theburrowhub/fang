@@ -29,4 +29,6 @@ pub enum Event {
     GitOutputLine(String),
     /// Git operation completed
     GitDone { exit_code: i32 },
+    /// Git file-status map refreshed (absolute path → status)
+    GitStatusReady(std::collections::HashMap<std::path::PathBuf, crate::app::state::GitFileStatus>),
 }

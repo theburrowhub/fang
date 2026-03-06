@@ -259,6 +259,16 @@ fn build_sidebar_tree(current_dir: &std::path::Path) -> Vec<app::state::SidebarN
     nodes
 }
 
+/// Refresh git file-status for the given directory asynchronously.
+fn schedule_git_status_load(dir: &std::path::Path, tx: &UnboundedSender<Event>) {
+    let dir = dir.to_path_buf();
+    let tx = tx.clone();
+    tokio::spawn(async move {
+        let status = commands::git::file_status(&dir).await;
+        let _ = tx.send(Event::GitStatusReady(status));
+    });
+}
+
 /// Navigates to a new directory: resets list state, rebuilds sidebar, loads the directory.
 /// Shared by NavLeft (parent) and NavRight (child directory).
 fn navigate_to_dir(state: &mut AppState, path: PathBuf, tx: &UnboundedSender<Event>) {
@@ -274,6 +284,7 @@ fn navigate_to_dir(state: &mut AppState, path: PathBuf, tx: &UnboundedSender<Eve
     schedule_directory_load(path.clone(), tx);
     schedule_header_info_load(&path, tx);
     commands::title::set_window_title(&path);
+    schedule_git_status_load(&state.current_dir, tx);
 }
 
 /// Syncs mode.query with state.search_query, re-filters, and schedules a preview refresh.
@@ -980,6 +991,9 @@ fn handle_event(event: Event, state: &mut AppState, tx: &UnboundedSender<Event>)
         Event::HeaderInfoReady(info) => {
             state.header_info = info;
         }
+        Event::GitStatusReady(status_map) => {
+            state.git_file_status = status_map;
+        }
         Event::CommandOutput { exit_code, .. } => {
             // Command finished: release the stdin pipe (signals EOF to child) and
             // re-enable normal keyboard navigation.
@@ -1058,6 +1072,9 @@ async fn main() -> Result<()> {
 
     // Set initial window title
     commands::title::set_window_title(&initial_dir);
+
+    // Initial git file status
+    schedule_git_status_load(&initial_dir, &tx);
 
     // Setup event sources
     let mut crossterm_events = EventStream::new();

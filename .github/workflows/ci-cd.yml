@@ -273,16 +273,16 @@ jobs:
           prerelease: ${{ contains(needs.release-prep.outputs.version, '-') }}
 
       - name: Update Homebrew tap
-        # Requires HOMEBREW_TAP_TOKEN secret (PAT with repo scope on theburrowhub/homebrew-tap).
+        # Requires TAP_GITHUB_TOKEN secret (PAT with repo scope on theburrowhub/homebrew-tap).
         # Add it at: https://github.com/theburrowhub/fang/settings/secrets/actions
-        if: secrets.HOMEBREW_TAP_TOKEN != ''
+        if: secrets.TAP_GITHUB_TOKEN != ''
         continue-on-error: true
         env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
         run: |
           V="${{ needs.release-prep.outputs.version }}"
           git clone \
-            "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/theburrowhub/homebrew-tap.git" \
+            "https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/theburrowhub/homebrew-tap.git" \
             homebrew-tap
 
           cat > homebrew-tap/Formula/fang.rb <<FORMULA

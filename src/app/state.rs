@@ -144,6 +144,52 @@ pub struct SidebarNode {
     pub is_dir: bool,
 }
 
+// ─── Git file status ──────────────────────────────────────────────────────────
+
+/// Git working-tree / index status of a single file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GitFileStatus {
+    /// Staged new file (A in index)
+    Added,
+    /// Modified in index or worktree (M)
+    Modified,
+    /// Deleted in index or worktree (D)
+    Deleted,
+    /// Renamed or copied (R / C)
+    Renamed,
+    /// Untracked (??)
+    Untracked,
+    /// Unmerged / conflict
+    Conflict,
+}
+
+impl GitFileStatus {
+    /// Single-char indicator shown in the file list.
+    pub fn indicator(&self) -> char {
+        match self {
+            Self::Added => '+',
+            Self::Modified => '~',
+            Self::Deleted => '-',
+            Self::Renamed => '»',
+            Self::Untracked => '?',
+            Self::Conflict => '!',
+        }
+    }
+
+    /// Ratatui style for the indicator.
+    pub fn style(&self) -> ratatui::style::Style {
+        use ratatui::style::{Color, Style};
+        match self {
+            Self::Added => Style::default().fg(Color::Green),
+            Self::Modified => Style::default().fg(Color::Yellow),
+            Self::Deleted => Style::default().fg(Color::Red),
+            Self::Renamed => Style::default().fg(Color::Cyan),
+            Self::Untracked => Style::default().fg(Color::DarkGray),
+            Self::Conflict => Style::default().fg(Color::Red),
+        }
+    }
+}
+
 // ─── AppState ─────────────────────────────────────────────────────────────────
 
 /// Single source of truth for the entire application.
@@ -202,6 +248,10 @@ pub struct AppState {
     // Configuration
     /// Loaded and live-updated application configuration.
     pub config: crate::config::Config,
+
+    // Git file status
+    /// Map from absolute path → git status, refreshed on every directory navigation.
+    pub git_file_status: std::collections::HashMap<std::path::PathBuf, GitFileStatus>,
 }
 
 impl AppState {
@@ -230,6 +280,7 @@ impl AppState {
             needs_terminal_clear: false,
             command_stdin: None,
             config: crate::config::Config::default(),
+            git_file_status: std::collections::HashMap::new(),
         }
     }
 

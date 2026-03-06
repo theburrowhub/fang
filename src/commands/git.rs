@@ -687,6 +687,72 @@ pub async fn run_git(args: &[String], dir: &Path, tx: UnboundedSender<Event>) ->
     Ok(())
 }
 
+// ── Git file status (for file-list decorations) ───────────────────────────────
+
+/// Run `git status --porcelain` and return a map of absolute path → status.
+/// Returns an empty map if the directory is not in a git repo or git is missing.
+pub async fn file_status(
+    dir: &std::path::Path,
+) -> std::collections::HashMap<std::path::PathBuf, crate::app::state::GitFileStatus> {
+    use crate::app::state::GitFileStatus;
+    use std::collections::HashMap;
+
+    let git = match find_git_binary() {
+        Some(p) => p,
+        None => return HashMap::new(),
+    };
+
+    let output = match tokio::process::Command::new(&git)
+        .args([
+            "-C",
+            dir.to_str().unwrap_or("."),
+            "status",
+            "--porcelain",
+            "--untracked-files=all",
+        ])
+        .output()
+        .await
+    {
+        Ok(o) if o.status.success() || !o.stdout.is_empty() => o,
+        _ => return HashMap::new(),
+    };
+
+    let mut map = HashMap::new();
+
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        if line.len() < 4 {
+            continue;
+        }
+        let x = line.chars().next().unwrap_or(' ');
+        let y = line.chars().nth(1).unwrap_or(' ');
+        // Path starts at column 3; for renames "old -> new" take the new name
+        let path_part = line[3..].trim();
+        let filename = if let Some(pos) = path_part.rfind(" -> ") {
+            &path_part[pos + 4..]
+        } else {
+            path_part
+        };
+
+        let status = match (x, y) {
+            ('?', '?') => GitFileStatus::Untracked,
+            ('!', '!') => continue, // ignored
+            ('A', _) | (_, 'A') => GitFileStatus::Added,
+            ('R', _) | ('C', _) | (_, 'R') | (_, 'C') => GitFileStatus::Renamed,
+            ('D', _) | (_, 'D') => GitFileStatus::Deleted,
+            ('M', _) | (_, 'M') => GitFileStatus::Modified,
+            ('U', _) | (_, 'U') => GitFileStatus::Conflict,
+            _ => continue,
+        };
+
+        // git status paths are relative to the repo root; with -C dir they are
+        // relative to dir, so we can join directly.
+        let abs = dir.join(filename);
+        map.insert(abs, status);
+    }
+
+    map
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

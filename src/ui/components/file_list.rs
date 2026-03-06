@@ -56,11 +56,12 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
 
     let inner_area = block.inner(area);
 
-    // Visible width for text (minus icon + size columns)
+    // Visible width for text (minus icon + git-status indicator + size columns)
     let available_width = inner_area.width.saturating_sub(2) as usize;
     let size_width = 5usize;
     let icon_width = 2usize;
-    let name_width = available_width.saturating_sub(size_width + icon_width);
+    let git_width = 2usize; // "~ " / "+ " / "  "
+    let name_width = available_width.saturating_sub(size_width + icon_width + git_width);
 
     // Collect visible entries once to avoid double allocation
     let visible = state.visible_entries();
@@ -86,9 +87,17 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             // Pad name to name_width for alignment
             let padded_name = format!("{:<width$}", name, width = name_width);
 
+            // Git status indicator (1 char + space), blank when clean
+            let (git_char, git_style) = state
+                .git_file_status
+                .get(&entry.path)
+                .map(|s| (s.indicator(), s.style()))
+                .unwrap_or((' ', Style::default()));
+
             let line = Line::from(vec![
                 Span::styled(icon, style),
                 Span::styled(padded_name, style),
+                Span::styled(format!("{} ", git_char), git_style),
                 Span::styled(
                     format!("{:>5}", size_str),
                     Style::default().fg(Color::DarkGray),
