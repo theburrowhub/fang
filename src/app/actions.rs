@@ -71,6 +71,23 @@ pub enum Action {
     CloseHelp,
     HelpScrollUp,
     HelpScrollDown,
+    // AI prompt
+    OpenAiPrompt,
+    AiPromptChar(char),
+    AiPromptBackspace,
+    RunAiPrompt,
+    CloseAiPrompt,
+    // AI provider selection
+    OpenAiProviderSelect,
+    AiProviderNavUp,
+    AiProviderNavDown,
+    SelectAiProvider,
+    CloseAiProviderSelect,
+    // AI panel
+    ToggleAiPanel,
+    AiScrollUp,
+    AiScrollDown,
+    ResetAiSession,
     Noop,
 }
 
@@ -84,6 +101,25 @@ pub fn map_key_to_action(
     use crossterm::event::{KeyCode, KeyModifiers};
 
     match mode {
+        AppMode::Normal if *focused_panel == FocusedPanel::AiChat => match key.code {
+            // When AI chat panel is focused only scrolling, quit, Tab, and AI keys work.
+            // Navigation keys (h/l/arrows/Enter/Backspace) are blocked so they don't
+            // accidentally change directory while reading the AI output.
+            KeyCode::Char('q') | KeyCode::Char('Q') => Action::Quit,
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
+            KeyCode::Char('j') | KeyCode::Down => Action::AiScrollDown,
+            KeyCode::Char('k') | KeyCode::Up => Action::AiScrollUp,
+            KeyCode::PageDown => Action::AiScrollDown,
+            KeyCode::PageUp => Action::AiScrollUp,
+            KeyCode::Tab => Action::FocusNext,
+            KeyCode::Char('a') => Action::ToggleAiPanel,
+            KeyCode::Char('i') => Action::OpenAiPrompt,
+            KeyCode::Char('I') => Action::OpenAiProviderSelect,
+            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                Action::ResetAiSession
+            }
+            _ => Action::Noop,
+        },
         AppMode::Normal => match key.code {
             KeyCode::Char('q') | KeyCode::Char('Q') => Action::Quit,
             // When preview panel has focus, j/k/arrows scroll the content.
@@ -113,6 +149,9 @@ pub fn map_key_to_action(
             KeyCode::BackTab => Action::FocusPrev,
             KeyCode::PageUp => Action::PreviewScrollUp,
             KeyCode::PageDown => Action::PreviewScrollDown,
+            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                Action::ResetAiSession
+            }
             KeyCode::Char(':') => Action::OpenCommandInput,
             KeyCode::Char(';') => Action::OpenExternalCommand,
             KeyCode::Char('g') | KeyCode::Char('G') => Action::OpenGitMenu,
@@ -121,6 +160,9 @@ pub fn map_key_to_action(
             KeyCode::Char('o') => Action::OpenWithSystem,
             KeyCode::Char('n') => Action::OpenNewFile,
             KeyCode::Char('N') => Action::OpenNewFileFromClipboard,
+            KeyCode::Char('a') => Action::ToggleAiPanel,
+            KeyCode::Char('i') => Action::OpenAiPrompt,
+            KeyCode::Char('I') => Action::OpenAiProviderSelect,
             _ => Action::Noop,
         },
         AppMode::Search { .. } => match key.code {
@@ -203,6 +245,22 @@ pub fn map_key_to_action(
             KeyCode::Char('k') | KeyCode::Up => Action::SettingsNavUp,
             KeyCode::Char('+') | KeyCode::Right => Action::SettingsIncrease,
             KeyCode::Char('-') | KeyCode::Left => Action::SettingsDecrease,
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
+            _ => Action::Noop,
+        },
+        AppMode::AiPrompt { .. } => match key.code {
+            KeyCode::Esc => Action::CloseAiPrompt,
+            KeyCode::Enter => Action::RunAiPrompt,
+            KeyCode::Backspace => Action::AiPromptBackspace,
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
+            KeyCode::Char(c) => Action::AiPromptChar(c),
+            _ => Action::Noop,
+        },
+        AppMode::AiProviderSelect { .. } => match key.code {
+            KeyCode::Esc | KeyCode::Char('q') => Action::CloseAiProviderSelect,
+            KeyCode::Enter => Action::SelectAiProvider,
+            KeyCode::Down | KeyCode::Char('j') => Action::AiProviderNavDown,
+            KeyCode::Up | KeyCode::Char('k') => Action::AiProviderNavUp,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
             _ => Action::Noop,
         },
@@ -696,6 +754,88 @@ mod tests {
         assert!(matches!(
             map_key_to_action(&ctrl_c, &mode, &crate::app::state::FocusedPanel::FileList),
             Action::Quit
+        ));
+    }
+
+    #[test]
+    fn test_i_opens_ai_in_normal_mode() {
+        assert!(matches!(
+            map_key_to_action(
+                &key(KeyCode::Char('i')),
+                &AppMode::Normal,
+                &crate::app::state::FocusedPanel::FileList
+            ),
+            Action::OpenAiPrompt
+        ));
+    }
+
+    #[test]
+    fn test_shift_i_opens_ai_provider_select() {
+        assert!(matches!(
+            map_key_to_action(
+                &key(KeyCode::Char('I')),
+                &AppMode::Normal,
+                &crate::app::state::FocusedPanel::FileList
+            ),
+            Action::OpenAiProviderSelect
+        ));
+    }
+
+    #[test]
+    fn test_ai_prompt_mode_key_mapping() {
+        let mode = AppMode::AiPrompt {
+            prompt: String::new(),
+        };
+        let panel = crate::app::state::FocusedPanel::FileList;
+        assert!(matches!(
+            map_key_to_action(&key(KeyCode::Esc), &mode, &panel),
+            Action::CloseAiPrompt
+        ));
+        assert!(matches!(
+            map_key_to_action(&key(KeyCode::Enter), &mode, &panel),
+            Action::RunAiPrompt
+        ));
+        assert!(matches!(
+            map_key_to_action(&key(KeyCode::Backspace), &mode, &panel),
+            Action::AiPromptBackspace
+        ));
+        assert!(matches!(
+            map_key_to_action(&key(KeyCode::Char('x')), &mode, &panel),
+            Action::AiPromptChar('x')
+        ));
+    }
+
+    #[test]
+    fn test_ai_provider_select_key_mapping() {
+        let mode = AppMode::AiProviderSelect { selected: 0 };
+        let panel = crate::app::state::FocusedPanel::FileList;
+        assert!(matches!(
+            map_key_to_action(&key(KeyCode::Esc), &mode, &panel),
+            Action::CloseAiProviderSelect
+        ));
+        assert!(matches!(
+            map_key_to_action(&key(KeyCode::Char('q')), &mode, &panel),
+            Action::CloseAiProviderSelect
+        ));
+        assert!(matches!(
+            map_key_to_action(&key(KeyCode::Enter), &mode, &panel),
+            Action::SelectAiProvider
+        ));
+        assert!(matches!(
+            map_key_to_action(&key(KeyCode::Down), &mode, &panel),
+            Action::AiProviderNavDown
+        ));
+        assert!(matches!(
+            map_key_to_action(&key(KeyCode::Up), &mode, &panel),
+            Action::AiProviderNavUp
+        ));
+        assert!(matches!(
+            map_key_to_action(&key(KeyCode::Char('j')), &mode, &panel),
+            Action::AiProviderNavDown
+        ));
+        assert!(matches!(
+            map_key_to_action(&key(KeyCode::Char('k')), &mode, &panel),
+            Action::AiProviderNavUp
         ));
     }
 }
