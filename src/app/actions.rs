@@ -79,15 +79,17 @@ pub fn map_key_to_action(
             KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => Action::NavRight,
             KeyCode::Char('/') => Action::OpenSearch,
             KeyCode::Char('m') | KeyCode::Char('M') => Action::OpenMakeModal,
+            // Guarded arms (with modifier checks) must come BEFORE the unguarded
+            // Char('s') arm, or the unguarded arm would shadow them.
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                Action::OpenSettings
+            }
             KeyCode::Char('s') => Action::ToggleSidebar,
             KeyCode::Char('p') => Action::TogglePreview,
             KeyCode::Tab => Action::FocusNext,
             KeyCode::PageUp => Action::PreviewScrollUp,
             KeyCode::PageDown => Action::PreviewScrollDown,
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
-            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                Action::OpenSettings
-            }
             KeyCode::Char(':') => Action::OpenCommandInput,
             KeyCode::Char(';') => Action::OpenExternalCommand,
             KeyCode::Char('g') | KeyCode::Char('G') => Action::OpenGitMenu,
