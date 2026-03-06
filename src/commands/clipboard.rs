@@ -155,3 +155,57 @@ fn try_xclip_mime(mime: &str) -> Option<Vec<u8>> {
         .filter(|o| o.status.success())
         .map(|o| o.stdout)
 }
+
+/// Write `text` to the system clipboard.
+pub fn write_clipboard(text: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::io::Write;
+        let mut child = std::process::Command::new("pbcopy")
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("pbcopy failed: {}", e))?;
+        child
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(text.as_bytes())
+            .map_err(|e| e.to_string())?;
+        child.wait().map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        use std::io::Write;
+        // Try wl-copy (Wayland), xclip, xsel in order
+        for (cmd, args) in &[
+            ("wl-copy", vec![]),
+            ("xclip", vec!["-selection", "clipboard"]),
+            ("xsel", vec!["--clipboard", "--input"]),
+        ] {
+            if let Ok(mut child) = std::process::Command::new(cmd)
+                .args(args)
+                .stdin(std::process::Stdio::piped())
+                .spawn()
+            {
+                if child
+                    .stdin
+                    .as_mut()
+                    .unwrap()
+                    .write_all(text.as_bytes())
+                    .is_ok()
+                {
+                    let _ = child.wait();
+                    return Ok(());
+                }
+            }
+        }
+        Err("No clipboard tool found (install wl-copy, xclip, or xsel)".to_string())
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = text;
+        Err("Clipboard write not supported on this platform".to_string())
+    }
+}

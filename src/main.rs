@@ -287,6 +287,11 @@ fn apply_search_update(state: &mut AppState, tx: &UnboundedSender<Event>) {
     schedule_preview(state, tx);
 }
 
+/// Write `text` to the system clipboard using the platform clipboard tool.
+fn copy_to_clipboard(text: &str) -> Result<(), String> {
+    commands::clipboard::write_clipboard(text)
+}
+
 /// Handles an Action, updating state and spawning tasks as needed.
 fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Event>) {
     match action {
@@ -621,6 +626,30 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
                             let _ = commands::git::run_git(&args, &dir, tx2).await;
                         });
                     }
+                }
+            }
+        }
+        // ── Copy path ──────────────────────────────────────────────────────────
+        Action::CopyRelPath => {
+            if let Some(entry) = state.selected_entry() {
+                let path = entry.path.clone();
+                let rel = path
+                    .strip_prefix(&state.current_dir)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .to_string();
+                match copy_to_clipboard(&rel) {
+                    Ok(()) => state.status_message = Some(format!("Copied: {}", rel)),
+                    Err(e) => state.status_message = Some(format!("Copy error: {}", e)),
+                }
+            }
+        }
+        Action::CopyAbsPath => {
+            if let Some(entry) = state.selected_entry() {
+                let abs = entry.path.to_string_lossy().to_string();
+                match copy_to_clipboard(&abs) {
+                    Ok(()) => state.status_message = Some(format!("Copied: {}", abs)),
+                    Err(e) => state.status_message = Some(format!("Copy error: {}", e)),
                 }
             }
         }
