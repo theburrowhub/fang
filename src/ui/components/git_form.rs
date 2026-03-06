@@ -140,8 +140,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                 ]);
                 frame.render_widget(Paragraph::new(line), row);
             }
-            // Bool toggle / checkbox
-            (GitParamKind::Bool { .. }, GitParamValue::Bool(checked)) => {
+            // Bool toggle / checkbox (includes SubCmd)
+            (
+                GitParamKind::Bool { .. } | GitParamKind::SubCmd { .. },
+                GitParamValue::Bool(checked),
+            ) => {
                 let checkbox = if *checked { "[x]" } else { "[ ]" };
                 let box_style = if *checked {
                     Style::default()

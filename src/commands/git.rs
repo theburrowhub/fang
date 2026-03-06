@@ -18,6 +18,12 @@ pub enum GitParamKind {
     },
     /// A boolean checkbox.  When true, `flag` is appended to the args.
     Bool { flag: &'static str, default: bool },
+    /// A subcommand selector.  When true, `subcommand` is inserted at
+    /// position 1 in the args (e.g. `git stash pop`).
+    SubCmd {
+        subcommand: &'static str,
+        default: bool,
+    },
 }
 
 /// Static definition of one parameter in a git form.
@@ -78,6 +84,7 @@ pub fn default_values(params: &[GitParamDef]) -> Vec<GitParamValue> {
         .map(|p| match p.kind {
             GitParamKind::Text { .. } => GitParamValue::Text(String::new()),
             GitParamKind::Bool { default, .. } => GitParamValue::Bool(default),
+            GitParamKind::SubCmd { default, .. } => GitParamValue::Bool(default),
         })
         .collect()
 }
@@ -85,6 +92,17 @@ pub fn default_values(params: &[GitParamDef]) -> Vec<GitParamValue> {
 /// Build the final argument list for `git` from base args + form values.
 pub fn build_args(op: GitOperation, values: &[GitParamValue]) -> Vec<String> {
     let mut args: Vec<String> = op.base_args.iter().map(|&s| s.to_string()).collect();
+
+    // SubCmd params are processed first: when checked, insert the subcommand
+    // at position 1 and return immediately (subcommands are mutually exclusive).
+    for (def, val) in op.params.iter().zip(values.iter()) {
+        if let (GitParamKind::SubCmd { subcommand, .. }, GitParamValue::Bool(true)) =
+            (&def.kind, val)
+        {
+            args.insert(1, subcommand.to_string());
+            return args;
+        }
+    }
 
     for (def, val) in op.params.iter().zip(values.iter()) {
         match (&def.kind, val) {
@@ -467,7 +485,14 @@ static PUSH_PARAMS: &[GitParamDef] = &[
 
 static STASH_PARAMS: &[GitParamDef] = &[
     GitParamDef {
-        label: "Message",
+        label: "Pop — apply and remove from stash",
+        kind: GitParamKind::SubCmd {
+            subcommand: "pop",
+            default: false,
+        },
+    },
+    GitParamDef {
+        label: "Message (for git stash push)",
         kind: GitParamKind::Text {
             placeholder: "WIP: …",
             flag: Some("-m"),
@@ -533,11 +558,6 @@ pub fn git_operations() -> Vec<GitOperation> {
             base_args: &["stash"],
             params: STASH_PARAMS,
         },
-        GitOperation {
-            label: "Stash pop",
-            base_args: &["stash", "pop"],
-            params: &[],
-        },
         // ── Write operations — all through forms ──────────────────────────
         GitOperation {
             label: "Add…",
@@ -578,7 +598,7 @@ pub fn git_operations() -> Vec<GitOperation> {
 }
 
 /// Total number of git operations — used for modal height calculation.
-pub const N_GIT_OPS: usize = 16;
+pub const N_GIT_OPS: usize = 15;
 
 // ── Async runner ─────────────────────────────────────────────────────────────
 
@@ -680,7 +700,7 @@ mod tests {
     fn test_direct_ops_have_no_params() {
         let ops = git_operations();
         assert!(!ops[0].has_form()); // status
-        assert!(!ops[8].has_form()); // stash pop
+        assert!(!ops[0].has_form()); // status — the only direct op
     }
 
     #[test]
