@@ -3,9 +3,13 @@ use std::path::Path;
 
 pub mod binary;
 pub mod makefile;
+pub mod markdown;
 pub mod text;
 
 const MAX_PREVIEW_SIZE: u64 = 10 * 1024 * 1024; // 10MB
+
+/// Markdown extensions rendered with formatting instead of raw syntax highlighting.
+const MARKDOWN_EXTENSIONS: &[&str] = &["md", "markdown", "mdx", "mdown", "mkd", "mkdn"];
 
 pub async fn load_preview(entry: &FileEntry) -> PreviewState {
     if entry.is_dir {
@@ -35,11 +39,31 @@ pub async fn load_preview(entry: &FileEntry) -> PreviewState {
     match std::fs::read(&entry.path) {
         Ok(data) => {
             if binary::is_binary_by_content(&data) {
-                binary::load_binary_preview(&entry.path).await
-            } else {
-                // Pass already-read bytes to avoid a second file read
-                text::highlight_bytes(&entry.path, data)
+                return binary::load_binary_preview(&entry.path).await;
             }
+
+            // Render Markdown files with formatting instead of raw syntax highlighting
+            let ext = entry
+                .extension
+                .as_deref()
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            if MARKDOWN_EXTENSIONS.contains(&ext.as_str()) {
+                if let Ok(source) = String::from_utf8(data) {
+                    let total_lines = source.lines().count();
+                    // Use a fixed render width; the panel clips at actual width in the renderer
+                    let lines = markdown::render_markdown(&source, 200);
+                    return PreviewState::Text { lines, total_lines };
+                }
+                // If not valid UTF-8 fall through to normal text path
+                return text::highlight_bytes(
+                    &entry.path,
+                    std::fs::read(&entry.path).unwrap_or_default(),
+                );
+            }
+
+            // Pass already-read bytes to avoid a second file read
+            text::highlight_bytes(&entry.path, data)
         }
         Err(e) => PreviewState::Error(format!("Cannot read: {}", e)),
     }
