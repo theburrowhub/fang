@@ -557,6 +557,8 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
                 app::state::FocusedPanel::FileList => {
                     if state.preview_visible {
                         app::state::FocusedPanel::Preview
+                    } else if state.ai_panel_visible {
+                        app::state::FocusedPanel::AiChat
                     } else if state.sidebar_visible {
                         app::state::FocusedPanel::Sidebar
                     } else {
@@ -564,6 +566,15 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
                     }
                 }
                 app::state::FocusedPanel::Preview => {
+                    if state.ai_panel_visible {
+                        app::state::FocusedPanel::AiChat
+                    } else if state.sidebar_visible {
+                        app::state::FocusedPanel::Sidebar
+                    } else {
+                        app::state::FocusedPanel::FileList
+                    }
+                }
+                app::state::FocusedPanel::AiChat => {
                     if state.sidebar_visible {
                         app::state::FocusedPanel::Sidebar
                     } else {
@@ -683,6 +694,170 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
                     }
                 }
             });
+        }
+        // ── AI integration ────────────────────────────────────────────────────
+        Action::OpenAiPrompt => {
+            if state.ai_provider.is_some() {
+                // Show AI panel and open prompt.
+                state.ai_panel_visible = true;
+                state.mode = app::state::AppMode::AiPrompt {
+                    prompt: String::new(),
+                };
+            } else {
+                // No provider configured — detect and show selection modal.
+                let tx2 = tx.clone();
+                tokio::spawn(async move {
+                    let providers = commands::ai::detect_providers().await;
+                    let _ = tx2.send(Event::AiProvidersDetected(providers));
+                });
+                state.mode = app::state::AppMode::AiProviderSelect { selected: 0 };
+            }
+        }
+        Action::AiPromptChar(c) => {
+            if let app::state::AppMode::AiPrompt { prompt } = &mut state.mode {
+                prompt.push(*c);
+            }
+        }
+        Action::AiPromptBackspace => {
+            if let app::state::AppMode::AiPrompt { prompt } = &mut state.mode {
+                prompt.pop();
+            }
+        }
+        Action::CloseAiPrompt => {
+            state.mode = app::state::AppMode::Normal;
+        }
+        Action::RunAiPrompt => {
+            let prompt_text = if let app::state::AppMode::AiPrompt { prompt } = &state.mode {
+                prompt.clone()
+            } else {
+                String::new()
+            };
+            if !prompt_text.is_empty() {
+                if let Some(config) = &state.ai_provider {
+                    let config = config.clone();
+                    let context = commands::ai::build_context(
+                        &state.current_dir,
+                        state.selected_entry(),
+                        &state.ai_conversation,
+                    );
+                    let tx2 = tx.clone();
+
+                    // Add user message to conversation.
+                    state.ai_conversation.push(app::state::AiMessage {
+                        role: app::state::AiRole::User,
+                        text: prompt_text.clone(),
+                    });
+                    // Add empty assistant message to accumulate streamed response.
+                    state.ai_conversation.push(app::state::AiMessage {
+                        role: app::state::AiRole::Assistant,
+                        text: String::new(),
+                    });
+                    state.ai_streaming = true;
+                    state.ai_scroll = usize::MAX; // auto-scroll to bottom
+                    state.mode = app::state::AppMode::Normal;
+                    state.focused_panel = app::state::FocusedPanel::AiChat;
+
+                    let prompt_owned = prompt_text.clone();
+                    tokio::spawn(async move {
+                        commands::ai::run_ai_prompt(&config, &prompt_owned, &context, tx2).await;
+                    });
+                } else {
+                    state.status_message =
+                        Some("No AI provider configured. Press I to select one.".to_string());
+                    state.mode = app::state::AppMode::Normal;
+                }
+            } else {
+                state.mode = app::state::AppMode::Normal;
+            }
+        }
+        Action::OpenAiProviderSelect => {
+            let tx2 = tx.clone();
+            tokio::spawn(async move {
+                let providers = commands::ai::detect_providers().await;
+                let _ = tx2.send(Event::AiProvidersDetected(providers));
+            });
+            state.mode = app::state::AppMode::AiProviderSelect { selected: 0 };
+            state.ai_providers.clear();
+        }
+        Action::AiProviderNavDown => {
+            if let app::state::AppMode::AiProviderSelect { selected } = &mut state.mode {
+                if *selected < state.ai_providers.len().saturating_sub(1) {
+                    *selected += 1;
+                }
+            }
+        }
+        Action::AiProviderNavUp => {
+            if let app::state::AppMode::AiProviderSelect { selected } = &mut state.mode {
+                if *selected > 0 {
+                    *selected -= 1;
+                }
+            }
+        }
+        Action::SelectAiProvider => {
+            let selected = if let app::state::AppMode::AiProviderSelect { selected } = state.mode {
+                selected
+            } else {
+                0
+            };
+            if let Some(provider) = state.ai_providers.get(selected) {
+                let config = commands::ai::AiProviderConfig {
+                    provider_type: provider.provider_type.clone(),
+                    model: provider.model.clone(),
+                    endpoint: provider.endpoint.clone(),
+                };
+                // Save to config file (non-fatal if it fails).
+                if let Err(e) = commands::ai::save_config(&config) {
+                    tracing::warn!("Failed to save AI config: {}", e);
+                }
+                state.ai_provider = Some(config);
+                state.status_message = Some(format!("AI provider: {}", provider.display_name));
+                // Show AI panel and go straight to prompt.
+                state.ai_panel_visible = true;
+                state.mode = app::state::AppMode::AiPrompt {
+                    prompt: String::new(),
+                };
+            }
+        }
+        Action::CloseAiProviderSelect => {
+            state.mode = app::state::AppMode::Normal;
+        }
+        Action::ToggleAiPanel => {
+            state.ai_panel_visible = !state.ai_panel_visible;
+            if state.ai_panel_visible {
+                state.focused_panel = app::state::FocusedPanel::AiChat;
+            } else {
+                state.focused_panel = app::state::FocusedPanel::FileList;
+            }
+        }
+        Action::AiScrollUp => {
+            let total = state.ai_total_lines.get();
+            let view = state.ai_view_height.get();
+            let max_scroll = total.saturating_sub(view);
+            // Normalise from usize::MAX sentinel to the real bottom position.
+            if state.ai_scroll > max_scroll {
+                state.ai_scroll = max_scroll;
+            }
+            state.ai_scroll = state.ai_scroll.saturating_sub(3);
+        }
+        Action::AiScrollDown => {
+            let total = state.ai_total_lines.get();
+            let view = state.ai_view_height.get();
+            let max_scroll = total.saturating_sub(view);
+            if state.ai_scroll > max_scroll {
+                // Already at bottom — nothing to do.
+            } else {
+                state.ai_scroll = state.ai_scroll.saturating_add(3);
+                // Re-attach to auto-scroll if we reached the bottom.
+                if state.ai_scroll >= max_scroll {
+                    state.ai_scroll = usize::MAX;
+                }
+            }
+        }
+        Action::ResetAiSession => {
+            state.ai_conversation.clear();
+            state.ai_streaming = false;
+            state.ai_scroll = usize::MAX;
+            state.status_message = Some("AI session cleared".to_string());
         }
         Action::Noop => {}
     }
@@ -805,6 +980,39 @@ fn handle_event(event: Event, state: &mut AppState, tx: &UnboundedSender<Event>)
                 output.push(done_line.clone());
             }
             state.make_output.push(done_line);
+        }
+        Event::AiOutputLine(text) => {
+            // Append streamed text to the last assistant message in conversation.
+            if let Some(last_msg) = state.ai_conversation.last_mut() {
+                if last_msg.role == app::state::AiRole::Assistant {
+                    last_msg.text.push_str(&text);
+                }
+            }
+            // Auto-scroll to bottom while streaming.
+            state.ai_scroll = usize::MAX;
+        }
+        Event::AiDone => {
+            state.ai_streaming = false;
+            // Add a status message to mark completion.
+            state.ai_conversation.push(app::state::AiMessage {
+                role: app::state::AiRole::Status,
+                text: "[done]".to_string(),
+            });
+            state.ai_scroll = usize::MAX;
+        }
+        Event::AiProvidersDetected(providers) => {
+            state.ai_providers = providers;
+            // If we're in the provider select modal, ensure selection is valid.
+            if let app::state::AppMode::AiProviderSelect { selected } = &mut state.mode {
+                if *selected >= state.ai_providers.len() {
+                    *selected = 0;
+                }
+            }
+            if state.ai_providers.is_empty() {
+                state.status_message =
+                    Some("No AI providers detected. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, install Ollama, or install Claude Code.".to_string());
+                state.mode = app::state::AppMode::Normal;
+            }
         }
     }
 }
