@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.3.0] — 2026-03-07
+
+### Features
+
+- Sidebar/preview default visibility persisted in settings (#25) ([0eb2d60](https://github.com/theburrowhub/fang/commit/0eb2d60cf41df2f25702852dedb92434a110ab3b))
+
+
 ## [0.2.1] — 2026-03-06
 
 ### Bug Fixes
