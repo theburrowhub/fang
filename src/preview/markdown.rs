@@ -443,11 +443,7 @@ fn heading_props(level: HeadingLevel) -> (Color, &'static str) {
 // ── Two-pass table renderer ───────────────────────────────────────────────────
 
 /// Render a collected table with column-aligned widths.
-fn render_table(
-    lines: &mut Vec<StyledLine>,
-    rows: &TableRows,
-    panel_width: u16,
-) {
+fn render_table(lines: &mut Vec<StyledLine>, rows: &TableRows, panel_width: u16) {
     if rows.is_empty() {
         return;
     }
