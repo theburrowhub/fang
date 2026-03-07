@@ -61,9 +61,15 @@ impl Default for LayoutConfig {
     }
 }
 
-fn default_sidebar_pct() -> u16 { 15 }
-fn default_file_list_pct() -> u16 { 20 }
-fn default_true() -> bool { true }
+fn default_sidebar_pct() -> u16 {
+    15
+}
+fn default_file_list_pct() -> u16 {
+    20
+}
+fn default_true() -> bool {
+    true
+}
 
 // ── Top-level config file ─────────────────────────────────────────────────────
 
@@ -129,18 +135,26 @@ impl SettingEntry {
     pub fn increment(&mut self) {
         match self.kind {
             EntryKind::Editable { min: _, max } => {
-                if self.value < max { self.value += 1; }
+                if self.value < max {
+                    self.value += 1;
+                }
             }
-            EntryKind::Toggle => { self.value = if self.value == 0 { 1 } else { 0 }; }
+            EntryKind::Toggle => {
+                self.value = if self.value == 0 { 1 } else { 0 };
+            }
             EntryKind::Derived => {}
         }
     }
     pub fn decrement(&mut self) {
         match self.kind {
             EntryKind::Editable { min, max: _ } => {
-                if self.value > min { self.value -= 1; }
+                if self.value > min {
+                    self.value -= 1;
+                }
             }
-            EntryKind::Toggle => { self.value = if self.value == 0 { 1 } else { 0 }; }
+            EntryKind::Toggle => {
+                self.value = if self.value == 0 { 1 } else { 0 };
+            }
             EntryKind::Derived => {}
         }
     }

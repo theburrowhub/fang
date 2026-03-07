@@ -64,7 +64,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
 
             let name_style = if is_editable {
                 if is_sel {
-                    Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(Color::Gray)
                 }
@@ -98,11 +100,16 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                 }
                 EntryKind::Editable { .. } => {
                     let style = if is_sel {
-                        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD)
                     } else {
                         Style::default().fg(Color::DarkGray)
                     };
-                    (Span::styled(format!("{:>3} %", e.value), style), Span::raw(""))
+                    (
+                        Span::styled(format!("{:>3} %", e.value), style),
+                        Span::raw(""),
+                    )
                 }
             };
 
