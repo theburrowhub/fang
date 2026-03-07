@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.3.1] — 2026-03-07
+
+### Bug Fixes
+
+- Markdown renderer — wrap, aligned tables, clickable links, code styling (#26) ([acf5530](https://github.com/theburrowhub/fang/commit/acf5530e21b996aa060dc0227616e7cf28c26358))
+
+
 ## [0.3.0] — 2026-03-07
 
 ### Features
