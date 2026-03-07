@@ -53,11 +53,12 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     ])
     .areas(inner);
 
-    let name_width = 12usize;
+    let name_width = 26usize;
     let items: Vec<ListItem> = entries
         .iter()
         .enumerate()
         .map(|(i, e)| {
+            use crate::config::EntryKind;
             let is_sel = i == *selected;
             let is_editable = e.is_editable();
 
@@ -70,28 +71,52 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                     Style::default().fg(Color::Gray)
                 }
             } else {
-                // Derived entry — always dimmed
-                Style::default().fg(Color::DarkGray)
-            };
-
-            let val_style = if !is_editable {
-                Style::default().fg(Color::DarkGray)
-            } else if is_sel {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
-            } else {
                 Style::default().fg(Color::DarkGray)
             };
 
             let name_padded = format!("{:<width$}", e.description, width = name_width);
-            let value_str = format!("{:>3} %", e.value);
-            let derived_tag = if !is_editable { "  (auto)" } else { "" };
+
+            let (value_span, tag_span) = match &e.kind {
+                EntryKind::Toggle => {
+                    let on = e.as_bool();
+                    let (label, color) = if on {
+                        (" on ", Color::Green)
+                    } else {
+                        ("off ", Color::DarkGray)
+                    };
+                    let style = if is_sel {
+                        Style::default().fg(color).add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(color)
+                    };
+                    (Span::styled(format!("[{}]", label), style), Span::raw(""))
+                }
+                EntryKind::Derived => {
+                    let style = Style::default().fg(Color::DarkGray);
+                    (
+                        Span::styled(format!("{:>3} %", e.value), style),
+                        Span::styled("  (auto)", style),
+                    )
+                }
+                EntryKind::Editable { .. } => {
+                    let style = if is_sel {
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(Color::DarkGray)
+                    };
+                    (
+                        Span::styled(format!("{:>3} %", e.value), style),
+                        Span::raw(""),
+                    )
+                }
+            };
 
             let line = Line::from(vec![
                 Span::styled(name_padded, name_style),
-                Span::styled(value_str, val_style),
-                Span::styled(derived_tag, Style::default().fg(Color::DarkGray)),
+                value_span,
+                tag_span,
             ]);
             ListItem::new(line)
         })
