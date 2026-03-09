@@ -569,6 +569,7 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
             state.preview_scroll += 3;
         }
         Action::FocusNext => {
+            // Cycle forward: Sidebar → FileList → Preview → Sidebar (skip hidden)
             state.focused_panel = match state.focused_panel {
                 app::state::FocusedPanel::Sidebar => app::state::FocusedPanel::FileList,
                 app::state::FocusedPanel::FileList => {
@@ -587,6 +588,28 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
                         app::state::FocusedPanel::FileList
                     }
                 }
+            };
+        }
+        Action::FocusPrev => {
+            // Cycle backward: Preview → FileList → Sidebar → Preview (skip hidden)
+            state.focused_panel = match state.focused_panel {
+                app::state::FocusedPanel::Sidebar => {
+                    if state.preview_visible {
+                        app::state::FocusedPanel::Preview
+                    } else {
+                        app::state::FocusedPanel::FileList
+                    }
+                }
+                app::state::FocusedPanel::FileList => {
+                    if state.sidebar_visible {
+                        app::state::FocusedPanel::Sidebar
+                    } else if state.preview_visible {
+                        app::state::FocusedPanel::Preview
+                    } else {
+                        app::state::FocusedPanel::FileList
+                    }
+                }
+                app::state::FocusedPanel::Preview => app::state::FocusedPanel::FileList,
             };
         }
         // ── Git menu ─────────────────────────────────────────────────────────
