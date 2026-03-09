@@ -59,7 +59,8 @@ pub fn all_bindings() -> Vec<KeyBinding> {
         KeyBinding::help_only("Normal", "k / ↑", "Move up"),
         KeyBinding::footer("Normal", "u / ←", "Parent directory", "Up"),
         KeyBinding::help_only("Normal", "l / → / Enter", "Enter directory"),
-        KeyBinding::help_only("Normal", "Tab", "Cycle panel focus"),
+        KeyBinding::footer("Normal", "Tab", "Focus next panel (→)", "Panel →"),
+        KeyBinding::help_only("Normal", "Shift+Tab", "Focus previous panel (←)"),
         KeyBinding::help_only("Normal", "PgUp / PgDn", "Scroll preview"),
         // ── Normal mode — panels ──────────────────────────────────────────
         KeyBinding::help_only("Normal", "s", "Toggle sidebar"),

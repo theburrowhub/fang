@@ -18,7 +18,8 @@ pub enum Action {
     RunMakeTarget,
     PreviewScrollUp,
     PreviewScrollDown,
-    FocusNext, // Tab between panels
+    FocusNext, // Tab  — move focus to next  visible panel (left→right)
+    FocusPrev, // Shift+Tab — move focus to prev visible panel (right→left)
     OpenCommandInput,
     CommandInputChar(char),
     CommandInputBackspace,
@@ -108,6 +109,7 @@ pub fn map_key_to_action(
             KeyCode::Char('s') => Action::ToggleSidebar,
             KeyCode::Char('p') => Action::TogglePreview,
             KeyCode::Tab => Action::FocusNext,
+            KeyCode::BackTab => Action::FocusPrev,
             KeyCode::PageUp => Action::PreviewScrollUp,
             KeyCode::PageDown => Action::PreviewScrollDown,
             KeyCode::Char(':') => Action::OpenCommandInput,
