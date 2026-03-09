@@ -114,15 +114,16 @@ pub fn open_in_split(cmd: &str, cwd: &Path) -> Result<(), String> {
         let escaped_cwd = cwd_str.replace('\\', "\\\\").replace('"', "\\\"");
         let script = format!(
             r#"tell application "iTerm2"
-                activate
                 tell current window
                     tell current session of current tab
                         set newSession to (split vertically with default profile)
                         tell newSession
                             write text "cd \"{cwd}\" && {cmd}"
+                            select
                         end tell
                     end tell
                 end tell
+                activate
             end tell"#,
             cwd = escaped_cwd,
             cmd = escaped_cmd,
@@ -212,11 +213,12 @@ pub fn open_in_popup(cmd: &str, cwd: &Path) -> Result<(), String> {
 
     if std::env::var("TMUX").is_ok() {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-        // -d sets working directory; shell_cmd loads aliases via -i -c.
-        let shell_cmd = format!("{} -i -c {}", shell, shlex_quote(cmd));
-        // -EE: close popup even when command exits with non-zero.
+        // Run cmd, then exec a fresh interactive shell so the popup stays open
+        // for review. User closes with exit / Ctrl-D. -E closes when shell exits.
+        let keep_alive = format!("{}; exec {}", cmd, shell);
+        let shell_cmd = format!("{} -i -c {}", shell, shlex_quote(&keep_alive));
         return fire(&[
-            "tmux", "popup", "-EE", "-d", cwd_str, "-w", "80%", "-h", "80%", &shell_cmd,
+            "tmux", "popup", "-E", "-d", cwd_str, "-w", "80%", "-h", "80%", &shell_cmd,
         ]);
     }
 
