@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.4.0] — 2026-03-09
+
+### Features
+
+- Shift+Tab cycles panel focus backward (skip hidden panels) (#27) ([91a098a](https://github.com/theburrowhub/fang/commit/91a098aafef75413b6490163be5eda4917408a6b))
+
+
 ## [0.3.1] — 2026-03-07
 
 ### Bug Fixes
