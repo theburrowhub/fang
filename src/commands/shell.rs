@@ -19,8 +19,9 @@ pub fn open_in_split(cmd: &str, cwd: &Path) -> Result<(), String> {
 
     // ── 1. Zellij ────────────────────────────────────────────────────────────
     // "right" = add a new pane to the RIGHT → vertical divider, side by side.
+    // After opening, focus-next-pane moves focus into the new pane.
     if std::env::var("ZELLIJ").is_ok() || std::env::var("ZELLIJ_SESSION_NAME").is_ok() {
-        return fire(&[
+        fire(&[
             "zellij",
             "action",
             "new-pane",
@@ -33,14 +34,17 @@ pub fn open_in_split(cmd: &str, cwd: &Path) -> Result<(), String> {
             "-i",
             "-c",
             cmd,
-        ]);
+        ])?;
+        // Move focus into the freshly-opened pane.
+        let _ = fire(&["zellij", "action", "focus-next-pane"]);
+        return Ok(());
     }
 
     // ── 2. Tmux ───────────────────────────────────────────────────────────────
-    // In tmux: -h (horizontal flag) = split into left/right panes (vertical divider).
-    // This is tmux's confusing naming: "-h" means the panes sit side by side.
+    // -h means the panes sit side by side (vertical divider).
+    // We capture the new pane ID with -P -F '#{pane_id}' so we can focus it.
     if std::env::var("TMUX").is_ok() {
-        return fire(&["tmux", "split-window", "-h", "-c", cwd_str, &shell_cmd]);
+        return tmux_split_and_focus(cwd_str, &shell_cmd);
     }
 
     // ── 3. Kitty ──────────────────────────────────────────────────────────────
@@ -198,7 +202,62 @@ pub fn open_in_split(cmd: &str, cwd: &Path) -> Result<(), String> {
         .to_string())
 }
 
+/// Open `cmd` in a floating tmux popup overlay.
+///
+/// The popup covers 80 % of the window and closes automatically when the
+/// command exits (tmux `-EE` flag).  Falls back to a regular split when tmux
+/// is not available.
+pub fn open_in_popup(cmd: &str, cwd: &Path) -> Result<(), String> {
+    let cwd_str = cwd.to_str().unwrap_or(".");
+
+    if std::env::var("TMUX").is_ok() {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        // -d sets working directory; shell_cmd loads aliases via -i -c.
+        let shell_cmd = format!("{} -i -c {}", shell, shlex_quote(cmd));
+        // -EE: close popup even when command exits with non-zero.
+        return fire(&[
+            "tmux", "popup", "-EE", "-d", cwd_str, "-w", "80%", "-h", "80%", &shell_cmd,
+        ]);
+    }
+
+    // Fallback: regular split when not in tmux.
+    open_in_split(cmd, cwd)
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Split the current tmux window horizontally, then focus the new pane.
+///
+/// Uses `-P -F '#{pane_id}'` to capture the new pane's ID so we can call
+/// `select-pane` immediately after — giving the user's focus to the new split.
+fn tmux_split_and_focus(cwd_str: &str, shell_cmd: &str) -> Result<(), String> {
+    let output = std::process::Command::new("tmux")
+        .args([
+            "split-window",
+            "-h",
+            "-P",
+            "-F",
+            "#{pane_id}",
+            "-c",
+            cwd_str,
+            shell_cmd,
+        ])
+        .output()
+        .map_err(|e| format!("tmux: {}", e))?;
+
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!("tmux split-window: {}", err));
+    }
+
+    let pane_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !pane_id.is_empty() {
+        let _ = std::process::Command::new("tmux")
+            .args(["select-pane", "-t", &pane_id])
+            .status();
+    }
+    Ok(())
+}
 
 /// Spawn `args[0]` with `args[1..]`, fully detached (no output capture, no wait).
 fn fire(args: &[&str]) -> Result<(), String> {
@@ -216,7 +275,7 @@ fn fire(args: &[&str]) -> Result<(), String> {
 }
 
 /// Wrap `s` in single quotes, escaping any embedded single quotes.
-fn shlex_quote(s: &str) -> String {
+pub fn shlex_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 

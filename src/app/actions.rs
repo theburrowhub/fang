@@ -29,6 +29,7 @@ pub enum Action {
     ExternalCommandChar(char),
     ExternalCommandBackspace,
     RunExternalCommand,
+    RunExternalCommandPopup,
     CloseExternalCommand,
     // Git menu
     OpenGitMenu,
@@ -154,6 +155,9 @@ pub fn map_key_to_action(
             KeyCode::Enter => Action::RunExternalCommand,
             KeyCode::Backspace => Action::ExternalCommandBackspace,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
+            KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                Action::RunExternalCommandPopup
+            }
             KeyCode::Char(c) => Action::ExternalCommandChar(c),
             _ => Action::Noop,
         },

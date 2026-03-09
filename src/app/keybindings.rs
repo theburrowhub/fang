@@ -98,6 +98,11 @@ pub fn all_bindings() -> Vec<KeyBinding> {
         KeyBinding::footer("Command", "Esc", "Cancel", "Cancel"),
         // ── External split ────────────────────────────────────────────────
         KeyBinding::footer("Split", "Enter", "Open command in split", "Open"),
+        KeyBinding::help_only(
+            "Split",
+            "Ctrl+P",
+            "Open command in tmux popup (fallback: split)",
+        ),
         KeyBinding::footer("Split", "Esc", "Cancel", "Cancel"),
         // ── New file dialog ───────────────────────────────────────────────
         KeyBinding::footer("NewFile", "Enter", "Create file", "Create"),

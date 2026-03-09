@@ -467,6 +467,23 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
                 }
             }
         }
+        Action::RunExternalCommandPopup => {
+            let cmd = if let app::state::AppMode::ExternalCommand { cmd } = &state.mode {
+                cmd.clone()
+            } else {
+                String::new()
+            };
+            state.mode = app::state::AppMode::Normal;
+            if !cmd.is_empty() {
+                let cwd = state.current_dir.clone();
+                match commands::shell::open_in_popup(&cmd, &cwd) {
+                    Ok(()) => {}
+                    Err(e) => {
+                        state.status_message = Some(format!("Popup error: {}", e));
+                    }
+                }
+            }
+        }
         Action::RunCommand => {
             let cmd = if let app::state::AppMode::CommandInput { cmd } = &state.mode {
                 cmd.clone()
