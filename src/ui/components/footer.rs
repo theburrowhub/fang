@@ -33,16 +33,23 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             Span::styled(cmd.as_str().to_owned(), Style::default().fg(Color::White)),
             Span::styled("\u{2588}", Style::default().fg(Color::Cyan)),
         ])),
-        AppMode::ExternalCommand { cmd } => Some(Line::from(vec![
-            Span::styled(
-                "; ",
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(cmd.as_str().to_owned(), Style::default().fg(Color::White)),
-            Span::styled("\u{2588}", Style::default().fg(Color::Green)),
-        ])),
+        AppMode::ExternalCommand { cmd } => {
+            let mut spans = vec![
+                Span::styled(
+                    "; ",
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(cmd.as_str().to_owned(), Style::default().fg(Color::White)),
+                Span::styled("\u{2588}", Style::default().fg(Color::Green)),
+                Span::raw("  "),
+            ];
+            spans.extend(key_hint("Enter", "Split"));
+            spans.extend(key_hint("^P", "Popup"));
+            spans.extend(key_hint("Esc", "✕"));
+            Some(Line::from(spans))
+        }
         AppMode::NewFile {
             name,
             from_clipboard,

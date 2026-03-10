@@ -7,20 +7,21 @@ use std::process::Stdio;
 /// Detect the running terminal/multiplexer and open `cmd` in a new **vertical**
 /// split (side by side, left | right) with `cwd` as the working directory.
 ///
+/// `focus` controls whether the new split receives keyboard focus:
+/// - `true`  — the new pane is selected/activated (interactive `;` use)
+/// - `false` — the new pane opens in the background (startup `--with` use)
+///
 /// "Vertical split" = a vertical dividing line = left pane + right pane.
 /// Note: naming conventions differ per terminal (see comments below).
-///
-/// Returns `Ok(())` on success, or an `Err(String)` describing the failure.
-pub fn open_in_split(cmd: &str, cwd: &Path) -> Result<(), String> {
+pub fn open_in_split(cmd: &str, cwd: &Path, focus: bool) -> Result<(), String> {
     let cwd_str = cwd.to_str().unwrap_or(".");
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
     // Wrap cmd so aliases (defined in ~/.zshrc / ~/.bashrc) are available.
     let shell_cmd = format!("cd {} && {} -i -c {}", cwd_str, shell, shlex_quote(cmd));
 
     // ── 1. Zellij ────────────────────────────────────────────────────────────
-    // "right" = add a new pane to the RIGHT → vertical divider, side by side.
     if std::env::var("ZELLIJ").is_ok() || std::env::var("ZELLIJ_SESSION_NAME").is_ok() {
-        return fire(&[
+        fire(&[
             "zellij",
             "action",
             "new-pane",
@@ -33,27 +34,42 @@ pub fn open_in_split(cmd: &str, cwd: &Path) -> Result<(), String> {
             "-i",
             "-c",
             cmd,
-        ]);
+        ])?;
+        if focus {
+            let _ = fire(&["zellij", "action", "focus-next-pane"]);
+        }
+        return Ok(());
     }
 
     // ── 2. Tmux ───────────────────────────────────────────────────────────────
-    // In tmux: -h (horizontal flag) = split into left/right panes (vertical divider).
-    // This is tmux's confusing naming: "-h" means the panes sit side by side.
+    // -h: panes sit side by side (vertical divider).
     if std::env::var("TMUX").is_ok() {
-        return fire(&["tmux", "split-window", "-h", "-c", cwd_str, &shell_cmd]);
+        return if focus {
+            tmux_split_and_focus(cwd_str, &shell_cmd)
+        } else {
+            // -d: create the pane without stealing focus from fang.
+            fire(&[
+                "tmux",
+                "split-window",
+                "-h",
+                "-d",
+                "-c",
+                cwd_str,
+                &shell_cmd,
+            ])
+        };
     }
 
     // ── 3. Kitty ──────────────────────────────────────────────────────────────
-    // "hsplit" = kitty creates a vertical dividing line → panes are LEFT | RIGHT.
     // Requires: `allow_remote_control yes` in kitty.conf (or --listen-on at launch).
     if std::env::var("KITTY_WINDOW_ID").is_ok() {
         return fire(&[
             "kitty",
             "@",
             "launch",
-            "--type=hsplit", // vertical divider, panes side by side
+            "--type=hsplit",
             &format!("--cwd={}", cwd_str),
-            "--hold", // keep pane open after command exits
+            "--hold",
             &shell,
             "-i",
             "-c",
@@ -68,13 +84,12 @@ pub fn open_in_split(cmd: &str, cwd: &Path) -> Result<(), String> {
     }
 
     // ── 4. WezTerm ────────────────────────────────────────────────────────────
-    // --horizontal = adds a vertical dividing line → panes are left | right.
     if std::env::var("WEZTERM_UNIX_SOCKET").is_ok() || std::env::var("WEZTERM_PANE").is_ok() {
         return fire(&[
             "wezterm",
             "cli",
             "split-pane",
-            "--horizontal", // = vertical divider (WezTerm naming)
+            "--horizontal",
             "--cwd",
             cwd_str,
             "--",
@@ -89,7 +104,6 @@ pub fn open_in_split(cmd: &str, cwd: &Path) -> Result<(), String> {
     if std::env::var("GHOSTTY_RESOURCES_DIR").is_ok()
         || matches!(std::env::var("TERM_PROGRAM").as_deref(), Ok("ghostty"))
     {
-        // Try the IPC approach first, fall back to new window
         return fire(&[
             "ghostty",
             "action",
@@ -103,31 +117,50 @@ pub fn open_in_split(cmd: &str, cwd: &Path) -> Result<(), String> {
     }
 
     // ── 6. iTerm2 (macOS) ────────────────────────────────────────────────────
-    // "split vertically" in AppleScript = adds a VERTICAL dividing line → LEFT | RIGHT.
-    // We save the new session reference so we can write the command to it directly.
+    // "split vertically" = adds a VERTICAL dividing line → LEFT | RIGHT.
     if std::env::var("ITERM_SESSION_ID").is_ok() {
         let escaped_cmd = cmd.replace('\\', "\\\\").replace('"', "\\\"");
         let escaped_cwd = cwd_str.replace('\\', "\\\\").replace('"', "\\\"");
-        let script = format!(
-            r#"tell application "iTerm2"
-                activate
-                tell current window
-                    tell current session of current tab
-                        set newSession to (split vertically with default profile)
-                        tell newSession
-                            write text "cd \"{cwd}\" && {cmd}"
+
+        // When focus=true: select the new session and bring iTerm2 to front.
+        // When focus=false: create the split silently — fang keeps focus.
+        let script = if focus {
+            format!(
+                r#"tell application "iTerm2"
+                    tell current window
+                        tell current session of current tab
+                            set newSession to (split vertically with default profile)
+                            tell newSession
+                                write text "cd \"{cwd}\" && {cmd}"
+                                select
+                            end tell
                         end tell
                     end tell
-                end tell
-            end tell"#,
-            cwd = escaped_cwd,
-            cmd = escaped_cmd,
-        );
+                    activate
+                end tell"#,
+                cwd = escaped_cwd,
+                cmd = escaped_cmd,
+            )
+        } else {
+            format!(
+                r#"tell application "iTerm2"
+                    tell current window
+                        tell current session of current tab
+                            set newSession to (split vertically with default profile)
+                            tell newSession
+                                write text "cd \"{cwd}\" && {cmd}"
+                            end tell
+                        end tell
+                    end tell
+                end tell"#,
+                cwd = escaped_cwd,
+                cmd = escaped_cmd,
+            )
+        };
         return fire(&["osascript", "-e", &script]);
     }
 
     // ── 7. macOS Terminal.app ─────────────────────────────────────────────────
-    // Terminal.app has no split API; open a new window running the command.
     if matches!(
         std::env::var("TERM_PROGRAM").as_deref(),
         Ok("Apple_Terminal")
@@ -198,7 +231,62 @@ pub fn open_in_split(cmd: &str, cwd: &Path) -> Result<(), String> {
         .to_string())
 }
 
+/// Open `cmd` in a floating tmux popup overlay.
+///
+/// The popup stays open after the command exits (drops into an interactive
+/// shell for review). User closes with `exit` / Ctrl-D. Falls back to a
+/// regular split (with focus) when tmux is not available.
+pub fn open_in_popup(cmd: &str, cwd: &Path) -> Result<(), String> {
+    let cwd_str = cwd.to_str().unwrap_or(".");
+
+    if std::env::var("TMUX").is_ok() {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        // Run cmd, then exec a fresh interactive shell so output stays readable.
+        let keep_alive = format!("{}; exec {}", cmd, shell);
+        let shell_cmd = format!("{} -i -c {}", shell, shlex_quote(&keep_alive));
+        return fire(&[
+            "tmux", "popup", "-E", "-d", cwd_str, "-w", "80%", "-h", "80%", &shell_cmd,
+        ]);
+    }
+
+    // Fallback: regular split with focus.
+    open_in_split(cmd, cwd, true)
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Split the current tmux window horizontally, then focus the new pane.
+///
+/// Uses `-P -F '#{pane_id}'` to capture the new pane's ID so we can call
+/// `select-pane` immediately after — giving the user's focus to the new split.
+fn tmux_split_and_focus(cwd_str: &str, shell_cmd: &str) -> Result<(), String> {
+    let output = std::process::Command::new("tmux")
+        .args([
+            "split-window",
+            "-h",
+            "-P",
+            "-F",
+            "#{pane_id}",
+            "-c",
+            cwd_str,
+            shell_cmd,
+        ])
+        .output()
+        .map_err(|e| format!("tmux: {}", e))?;
+
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!("tmux split-window: {}", err));
+    }
+
+    let pane_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !pane_id.is_empty() {
+        let _ = std::process::Command::new("tmux")
+            .args(["select-pane", "-t", &pane_id])
+            .status();
+    }
+    Ok(())
+}
 
 /// Spawn `args[0]` with `args[1..]`, fully detached (no output capture, no wait).
 fn fire(args: &[&str]) -> Result<(), String> {
@@ -216,7 +304,7 @@ fn fire(args: &[&str]) -> Result<(), String> {
 }
 
 /// Wrap `s` in single quotes, escaping any embedded single quotes.
-fn shlex_quote(s: &str) -> String {
+pub fn shlex_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 

@@ -459,10 +459,27 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
             state.mode = app::state::AppMode::Normal;
             if !cmd.is_empty() {
                 let cwd = state.current_dir.clone();
-                match commands::shell::open_in_split(&cmd, &cwd) {
+                match commands::shell::open_in_split(&cmd, &cwd, true) {
                     Ok(()) => {}
                     Err(e) => {
                         state.status_message = Some(format!("Split error: {}", e));
+                    }
+                }
+            }
+        }
+        Action::RunExternalCommandPopup => {
+            let cmd = if let app::state::AppMode::ExternalCommand { cmd } = &state.mode {
+                cmd.clone()
+            } else {
+                String::new()
+            };
+            state.mode = app::state::AppMode::Normal;
+            if !cmd.is_empty() {
+                let cwd = state.current_dir.clone();
+                match commands::shell::open_in_popup(&cmd, &cwd) {
+                    Ok(()) => {}
+                    Err(e) => {
+                        state.status_message = Some(format!("Popup error: {}", e));
                     }
                 }
             }
@@ -1065,10 +1082,24 @@ async fn main() -> Result<()> {
 
     setup_panic_hook();
 
-    // Determine initial directory
-    let initial_dir = std::env::args()
-        .nth(1)
-        .map(PathBuf::from)
+    // ── Parse CLI arguments ───────────────────────────────────────────────────
+    // Usage: fang [directory] [--with="cmd"] ...
+    //   directory  Optional path to open (defaults to current directory).
+    //   --with=CMD Open CMD in a background split alongside fang on startup.
+    //              May be repeated: fang --with="claudec!" --with="mactop"
+    let mut initial_dir_opt: Option<PathBuf> = None;
+    let mut with_commands: Vec<String> = Vec::new();
+
+    for arg in std::env::args().skip(1) {
+        if let Some(cmd) = arg.strip_prefix("--with=") {
+            with_commands.push(cmd.to_string());
+        } else if !arg.starts_with('-') {
+            initial_dir_opt = Some(PathBuf::from(&arg));
+        }
+        // Unknown flags are silently ignored for forward-compatibility.
+    }
+
+    let initial_dir = initial_dir_opt
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
     tracing::info!("Fang starting in {:?}", initial_dir);
@@ -1101,6 +1132,13 @@ async fn main() -> Result<()> {
 
     // Initial git file status
     schedule_git_status_load(&initial_dir, &tx);
+
+    // Open --with splits in background (fang keeps focus).
+    for cmd in &with_commands {
+        if let Err(e) = commands::shell::open_in_split(cmd, &initial_dir, false) {
+            tracing::warn!("--with '{}' failed: {}", cmd, e);
+        }
+    }
 
     // Setup event sources
     let mut crossterm_events = EventStream::new();
