@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.6.0] — 2026-03-10
+
+### Features
+
+- AI integration with multi-provider support (#18) ([161dfb1](https://github.com/theburrowhub/fang/commit/161dfb1a6bf39d5edb88aaa9f94fcbd9b795cd9f))
+
+
 ## [0.5.0] — 2026-03-10
 
 ### Features
