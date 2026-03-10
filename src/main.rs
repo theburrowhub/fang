@@ -237,28 +237,6 @@ fn schedule_directory_load(path: PathBuf, tx: &UnboundedSender<Event>) {
     });
 }
 
-/// Builds the sidebar tree from the current directory path.
-/// Single-pass O(n) construction — each prefix path is built incrementally.
-fn build_sidebar_tree(current_dir: &std::path::Path) -> Vec<app::state::SidebarNode> {
-    use std::path::Component;
-    let mut nodes = Vec::new();
-    let mut accumulated = PathBuf::new();
-
-    for (depth, component) in current_dir.components().enumerate() {
-        match component {
-            Component::RootDir => accumulated.push("/"),
-            _ => accumulated.push(component.as_os_str()),
-        }
-        nodes.push(app::state::SidebarNode {
-            path: accumulated.clone(),
-            depth,
-            is_expanded: true,
-            is_dir: true,
-        });
-    }
-    nodes
-}
-
 /// Refresh git file-status for the given directory asynchronously.
 fn schedule_git_status_load(dir: &std::path::Path, tx: &UnboundedSender<Event>) {
     let dir = dir.to_path_buf();
@@ -269,7 +247,7 @@ fn schedule_git_status_load(dir: &std::path::Path, tx: &UnboundedSender<Event>) 
     });
 }
 
-/// Navigates to a new directory: resets list state, rebuilds sidebar, loads the directory.
+/// Navigates to a new directory: resets list state, loads the directory.
 /// Shared by NavLeft (parent) and NavRight (child directory).
 fn navigate_to_dir(state: &mut AppState, path: PathBuf, tx: &UnboundedSender<Event>) {
     state.current_dir = path.clone();
@@ -280,7 +258,6 @@ fn navigate_to_dir(state: &mut AppState, path: PathBuf, tx: &UnboundedSender<Eve
     state.preview_state = app::state::PreviewState::Loading;
     state.preview_scroll = 0;
     state.needs_terminal_clear = true;
-    state.sidebar_tree = build_sidebar_tree(&path);
     schedule_directory_load(path.clone(), tx);
     schedule_header_info_load(&path, tx);
     commands::title::set_window_title(&path);
@@ -331,7 +308,9 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
         }
         Action::NavLeft => {
             if let Some(parent) = state.current_dir.parent().map(|p| p.to_path_buf()) {
-                navigate_to_dir(state, parent, tx);
+                if parent >= state.root_dir {
+                    navigate_to_dir(state, parent, tx);
+                }
             }
         }
         Action::NavRight => {
@@ -340,9 +319,6 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
                     navigate_to_dir(state, entry.path, tx);
                 }
             }
-        }
-        Action::ToggleSidebar => {
-            state.sidebar_visible = !state.sidebar_visible;
         }
         Action::TogglePreview => {
             state.preview_visible = !state.preview_visible;
@@ -586,16 +562,13 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
             state.preview_scroll += 3;
         }
         Action::FocusNext => {
-            // Cycle forward: Sidebar → FileList → Preview → Sidebar (skip hidden)
+            // Cycle forward: FileList → Preview → AiChat → FileList (skip hidden)
             state.focused_panel = match state.focused_panel {
-                app::state::FocusedPanel::Sidebar => app::state::FocusedPanel::FileList,
                 app::state::FocusedPanel::FileList => {
                     if state.preview_visible {
                         app::state::FocusedPanel::Preview
                     } else if state.ai_panel_visible {
                         app::state::FocusedPanel::AiChat
-                    } else if state.sidebar_visible {
-                        app::state::FocusedPanel::Sidebar
                     } else {
                         app::state::FocusedPanel::FileList
                     }
@@ -603,38 +576,19 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
                 app::state::FocusedPanel::Preview => {
                     if state.ai_panel_visible {
                         app::state::FocusedPanel::AiChat
-                    } else if state.sidebar_visible {
-                        app::state::FocusedPanel::Sidebar
                     } else {
                         app::state::FocusedPanel::FileList
                     }
                 }
-                app::state::FocusedPanel::AiChat => {
-                    if state.sidebar_visible {
-                        app::state::FocusedPanel::Sidebar
-                    } else {
-                        app::state::FocusedPanel::FileList
-                    }
-                }
+                app::state::FocusedPanel::AiChat => app::state::FocusedPanel::FileList,
             };
         }
         Action::FocusPrev => {
             // Cycle backward — exact mirror of FocusNext:
-            // Sidebar ← FileList ← Preview ← AiChat ← Sidebar (skip hidden)
+            // FileList ← Preview ← AiChat ← FileList (skip hidden)
             state.focused_panel = match state.focused_panel {
-                app::state::FocusedPanel::Sidebar => {
-                    if state.ai_panel_visible {
-                        app::state::FocusedPanel::AiChat
-                    } else if state.preview_visible {
-                        app::state::FocusedPanel::Preview
-                    } else {
-                        app::state::FocusedPanel::FileList
-                    }
-                }
                 app::state::FocusedPanel::FileList => {
-                    if state.sidebar_visible {
-                        app::state::FocusedPanel::Sidebar
-                    } else if state.ai_panel_visible {
+                    if state.ai_panel_visible {
                         app::state::FocusedPanel::AiChat
                     } else if state.preview_visible {
                         app::state::FocusedPanel::Preview
@@ -1319,11 +1273,9 @@ async fn main() -> Result<()> {
     // Load persisted config (sync read before TUI starts — acceptable for startup)
     let cfg = config::load();
     let mut state = AppState::new(initial_dir.clone(), ai_config);
-    // Apply persisted panel visibility — s/p toggle this in-session without saving.
-    state.sidebar_visible = cfg.layout.sidebar_visible;
+    // Apply persisted panel visibility — p toggles this in-session without saving.
     state.preview_visible = cfg.layout.preview_visible;
     state.config = cfg;
-    state.sidebar_tree = build_sidebar_tree(&initial_dir);
 
     // Setup internal event channel (for async results from background tasks)
     let (tx, mut rx) = mpsc::unbounded_channel::<Event>();

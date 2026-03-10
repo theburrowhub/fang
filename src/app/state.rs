@@ -154,21 +154,9 @@ pub enum AppMode {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FocusedPanel {
-    Sidebar,
     FileList,
     Preview,
     AiChat,
-}
-
-// ─── SidebarNode ─────────────────────────────────────────────────────────────
-
-/// One node in the sidebar breadcrumb tree.
-#[derive(Debug, Clone)]
-pub struct SidebarNode {
-    pub path: PathBuf,
-    pub depth: usize,
-    pub is_expanded: bool,
-    pub is_dir: bool,
 }
 
 // ─── Git file status ──────────────────────────────────────────────────────────
@@ -226,13 +214,11 @@ impl GitFileStatus {
 pub struct AppState {
     // Navigation
     pub current_dir: PathBuf,
+    /// The directory fang was opened in — navigation cannot go above this.
+    pub root_dir: PathBuf,
     pub entries: Vec<FileEntry>,
     pub selected_index: usize,
     pub file_list_scroll: usize,
-
-    // Sidebar
-    pub sidebar_tree: Vec<SidebarNode>,
-    pub sidebar_selected: usize,
 
     // Preview
     pub preview_state: PreviewState,
@@ -255,7 +241,6 @@ pub struct AppState {
     pub make_output: Vec<String>,
 
     // Layout toggles
-    pub sidebar_visible: bool,
     pub preview_visible: bool,
 
     // Status bar
@@ -309,12 +294,11 @@ impl AppState {
         ai_config: Option<crate::commands::ai::AiProviderConfig>,
     ) -> Self {
         Self {
-            current_dir: initial_dir,
+            current_dir: initial_dir.clone(),
+            root_dir: initial_dir,
             entries: vec![],
             selected_index: 0,
             file_list_scroll: 0,
-            sidebar_tree: vec![],
-            sidebar_selected: 0,
             preview_state: PreviewState::None,
             preview_scroll: 0,
             mode: AppMode::Normal,
@@ -324,7 +308,6 @@ impl AppState {
             make_targets: vec![],
             make_target_selected: 0,
             make_output: vec![],
-            sidebar_visible: true,
             preview_visible: true,
             status_message: None,
             header_info: HeaderInfo::default(),

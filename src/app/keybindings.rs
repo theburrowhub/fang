@@ -63,7 +63,6 @@ pub fn all_bindings() -> Vec<KeyBinding> {
         KeyBinding::help_only("Normal", "Shift+Tab", "Focus previous panel (←)"),
         KeyBinding::help_only("Normal", "PgUp / PgDn", "Scroll preview"),
         // ── Normal mode — panels ──────────────────────────────────────────
-        KeyBinding::help_only("Normal", "s", "Toggle sidebar"),
         KeyBinding::help_only("Normal", "p", "Toggle preview"),
         // ── Normal mode — features ────────────────────────────────────────
         KeyBinding::footer("Normal", "/", "Fuzzy search", "Search"),

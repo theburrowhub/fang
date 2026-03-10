@@ -5,7 +5,6 @@ pub enum Action {
     NavDown,
     NavLeft,  // Go to parent directory
     NavRight, // Enter selected directory
-    ToggleSidebar,
     TogglePreview,
     OpenSearch,
     SearchInput(char),
@@ -137,13 +136,10 @@ pub fn map_key_to_action(
             KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => Action::NavRight,
             KeyCode::Char('/') => Action::OpenSearch,
             KeyCode::Char('m') | KeyCode::Char('M') => Action::OpenMakeModal,
-            // Guarded arms (with modifier checks) must come BEFORE the unguarded
-            // Char('s') arm, or the unguarded arm would shadow them.
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
             KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 Action::OpenSettings
             }
-            KeyCode::Char('s') => Action::ToggleSidebar,
             KeyCode::Char('p') => Action::TogglePreview,
             KeyCode::Tab => Action::FocusNext,
             KeyCode::BackTab => Action::FocusPrev,
@@ -391,14 +387,6 @@ mod tests {
 
     #[test]
     fn test_normal_mode_toggles() {
-        assert!(matches!(
-            map_key_to_action(
-                &key(KeyCode::Char('s')),
-                &AppMode::Normal,
-                &crate::app::state::FocusedPanel::FileList
-            ),
-            Action::ToggleSidebar
-        ));
         assert!(matches!(
             map_key_to_action(
                 &key(KeyCode::Char('p')),
