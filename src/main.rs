@@ -619,10 +619,13 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
             };
         }
         Action::FocusPrev => {
-            // Cycle backward: Preview → FileList → Sidebar → Preview (skip hidden)
+            // Cycle backward — exact mirror of FocusNext:
+            // Sidebar ← FileList ← Preview ← AiChat ← Sidebar (skip hidden)
             state.focused_panel = match state.focused_panel {
                 app::state::FocusedPanel::Sidebar => {
-                    if state.preview_visible {
+                    if state.ai_panel_visible {
+                        app::state::FocusedPanel::AiChat
+                    } else if state.preview_visible {
                         app::state::FocusedPanel::Preview
                     } else {
                         app::state::FocusedPanel::FileList
@@ -631,6 +634,8 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
                 app::state::FocusedPanel::FileList => {
                     if state.sidebar_visible {
                         app::state::FocusedPanel::Sidebar
+                    } else if state.ai_panel_visible {
+                        app::state::FocusedPanel::AiChat
                     } else if state.preview_visible {
                         app::state::FocusedPanel::Preview
                     } else {
@@ -1360,8 +1365,15 @@ async fn main() -> Result<()> {
             state.needs_terminal_clear = false;
         }
 
+        // Update AI panel dimensions and scroll metrics before drawing,
+        // so the render path never needs &mut AppState.
+        let term_size = terminal.size()?;
+        let term_rect = ratatui::prelude::Rect::new(0, 0, term_size.width, term_size.height);
+        ui::layout::update_ai_panel_dimensions(&mut state, term_rect);
+        ui::components::ai_panel::update_max_scroll(&mut state);
+
         // Render current state
-        terminal.draw(|f| ui::layout::draw(f, &mut state))?;
+        terminal.draw(|f| ui::layout::draw(f, &state))?;
 
         if state.should_quit {
             break;

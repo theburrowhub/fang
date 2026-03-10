@@ -3,7 +3,84 @@ use crate::app::state::{AppMode, AppState};
 use ratatui::prelude::*;
 use ratatui::widgets::Clear;
 
-pub fn draw(frame: &mut Frame, state: &mut AppState) {
+/// Compute the AI panel area dimensions and store them in state.
+///
+/// Must be called before `draw()` each frame so that
+/// `ai_panel::update_max_scroll` has accurate dimensions.
+pub fn update_ai_panel_dimensions(state: &mut AppState, terminal_area: Rect) {
+    if !state.ai_panel_visible {
+        state.ai_panel_width = 0;
+        state.ai_panel_height = 0;
+        return;
+    }
+
+    // Reproduce the same layout logic as render_main_panels to find the AI area.
+    let [_header, main_area, _footer] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(0),
+        Constraint::Length(1),
+    ])
+    .areas(terminal_area);
+
+    let width = main_area.width;
+    let show_sidebar = state.sidebar_visible && width >= 80;
+    let show_both_right = state.preview_visible && state.ai_panel_visible && width >= 120;
+    let show_ai = state.ai_panel_visible;
+
+    let s = state.config.layout.sidebar_pct as u32;
+    let l = state.config.layout.file_list_pct as u32;
+    let p = state.config.layout.preview_pct() as u32;
+
+    let ai_area = if show_sidebar {
+        if show_both_right {
+            let [_sidebar, _list, right] = Layout::horizontal([
+                Constraint::Percentage(s as u16),
+                Constraint::Percentage(l as u16),
+                Constraint::Min(0),
+            ])
+            .areas(main_area);
+            let [_preview, ai] =
+                Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+                    .areas(right);
+            ai
+        } else if show_ai {
+            let [_sidebar, _list, ai] = Layout::horizontal([
+                Constraint::Percentage(s as u16),
+                Constraint::Percentage(l as u16),
+                Constraint::Min(0),
+            ])
+            .areas(main_area);
+            ai
+        } else {
+            Rect::default()
+        }
+    } else {
+        let lp = l + p;
+        let l2 = if lp > 0 { l * 100 / lp } else { 33 };
+
+        if show_both_right {
+            let [_list, right] =
+                Layout::horizontal([Constraint::Percentage(l2 as u16), Constraint::Min(0)])
+                    .areas(main_area);
+            let [_preview, ai] =
+                Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+                    .areas(right);
+            ai
+        } else if show_ai && width >= 50 {
+            let [_list, ai] =
+                Layout::horizontal([Constraint::Percentage(l2 as u16), Constraint::Min(0)])
+                    .areas(main_area);
+            ai
+        } else {
+            Rect::default()
+        }
+    };
+
+    state.ai_panel_width = ai_area.width;
+    state.ai_panel_height = ai_area.height;
+}
+
+pub fn draw(frame: &mut Frame, state: &AppState) {
     let area = frame.area();
 
     // Reserve 1 line for header, 1 line for footer (keybindings only)
@@ -62,7 +139,7 @@ pub fn draw(frame: &mut Frame, state: &mut AppState) {
     render_main_panels(frame, main_area, state);
 }
 
-fn render_main_panels(frame: &mut Frame, area: Rect, state: &mut AppState) {
+fn render_main_panels(frame: &mut Frame, area: Rect, state: &AppState) {
     let width = area.width;
     let show_sidebar = state.sidebar_visible && width >= 80;
     let show_preview = state.preview_visible && !state.ai_panel_visible;

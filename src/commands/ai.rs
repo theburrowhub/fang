@@ -1,8 +1,8 @@
 //! AI integration module.
 //!
-//! Detects available AI providers (Claude Code CLI, Ollama, OpenAI API, Anthropic API,
-//! Gemini), loads/saves configuration to `~/.config/fang/config.toml`, constructs
-//! contextual prompts, and streams responses back via the internal event channel.
+//! Detects available AI providers (Claude Code CLI, Ollama, OpenAI API, Anthropic API),
+//! loads/saves configuration to `~/.config/fang/config.toml`, constructs contextual
+//! prompts, and streams responses back via the internal event channel.
 
 use crate::app::events::Event;
 use serde::{Deserialize, Serialize};
@@ -140,12 +140,12 @@ pub fn save_config(config: &AiProviderConfig) -> Result<(), String> {
 /// Runs probes concurrently: Claude CLI auth status, Ollama HTTP check,
 /// environment variable checks for OpenAI / Anthropic API keys.
 pub async fn detect_providers() -> Vec<AiProvider> {
-    let (claude, ollama, openai, anthropic) = tokio::join!(
-        detect_claude(),
-        detect_ollama(),
-        detect_openai(),
-        detect_anthropic(),
-    );
+    // Env-var checks are sync — no need to spawn async tasks for them.
+    let openai = detect_openai();
+    let anthropic = detect_anthropic();
+
+    // Network / subprocess probes run concurrently.
+    let (claude, ollama) = tokio::join!(detect_claude(), detect_ollama(),);
 
     let mut providers = Vec::new();
     if let Some(p) = claude {
@@ -239,8 +239,8 @@ async fn detect_ollama() -> Vec<AiProvider> {
         .collect()
 }
 
-/// Detect OpenAI API via environment variable.
-async fn detect_openai() -> Option<AiProvider> {
+/// Detect OpenAI API via environment variable (sync — no I/O needed).
+fn detect_openai() -> Option<AiProvider> {
     std::env::var("OPENAI_API_KEY").ok().map(|_| AiProvider {
         display_name: "OpenAI API (gpt-4o)".to_string(),
         provider_type: AiProviderType::OpenAiApi,
@@ -249,8 +249,8 @@ async fn detect_openai() -> Option<AiProvider> {
     })
 }
 
-/// Detect Anthropic API via environment variable.
-async fn detect_anthropic() -> Option<AiProvider> {
+/// Detect Anthropic API via environment variable (sync — no I/O needed).
+fn detect_anthropic() -> Option<AiProvider> {
     std::env::var("ANTHROPIC_API_KEY").ok().map(|_| AiProvider {
         display_name: "Anthropic API (claude-sonnet-4-20250514)".to_string(),
         provider_type: AiProviderType::AnthropicApi,
@@ -293,9 +293,23 @@ pub fn build_context(
     }
 
     if let Some(entry) = selected_file {
+        let type_label = match &entry.file_type {
+            crate::fs::metadata::FileType::Directory => "directory",
+            crate::fs::metadata::FileType::RegularFile => "file",
+            crate::fs::metadata::FileType::Symlink => "symlink",
+            crate::fs::metadata::FileType::Executable => "executable",
+            crate::fs::metadata::FileType::Image => "image",
+            crate::fs::metadata::FileType::Video => "video",
+            crate::fs::metadata::FileType::Audio => "audio",
+            crate::fs::metadata::FileType::Archive => "archive",
+            crate::fs::metadata::FileType::Document => "document",
+            crate::fs::metadata::FileType::Code => "source code",
+            crate::fs::metadata::FileType::Config => "config",
+            crate::fs::metadata::FileType::Unknown => "file",
+        };
         ctx.push_str(&format!(
-            "\nSelected file: {} ({:?}, {} bytes)\n",
-            entry.name, entry.file_type, entry.size
+            "\nSelected file: {} ({}, {} bytes)\n",
+            entry.name, type_label, entry.size
         ));
 
         // Include file content if it's a small text file
@@ -376,6 +390,10 @@ pub async fn run_ai_prompt(
 }
 
 /// Invoke Claude Code CLI as a subprocess.
+///
+/// The `model` parameter is currently unused because `claude -p` uses the
+/// model configured via `claude config`. When the CLI supports `--model`
+/// in prompt mode this can be wired up.
 async fn run_claude_cli(
     _model: &str,
     user_prompt: &str,
@@ -430,7 +448,7 @@ async fn run_claude_cli(
     Ok(())
 }
 
-/// Invoke Ollama HTTP API with streaming.
+/// Invoke Ollama HTTP API with streaming via `/api/chat` (multi-turn).
 async fn run_ollama(
     endpoint: &str,
     model: &str,
@@ -441,13 +459,14 @@ async fn run_ollama(
     use futures::StreamExt;
 
     let client = reqwest::Client::new();
-    let url = format!("{}/api/generate", endpoint);
-
-    let full_prompt = format!("{}\n\nUser request: {}", context, user_prompt);
+    let url = format!("{}/api/chat", endpoint);
 
     let body = serde_json::json!({
         "model": model,
-        "prompt": full_prompt,
+        "messages": [
+            { "role": "system", "content": context },
+            { "role": "user", "content": user_prompt },
+        ],
         "stream": true,
     });
 
@@ -480,13 +499,12 @@ async fn run_ollama(
             }
 
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(&json_line) {
-                if let Some(response) = val.get("response").and_then(|r| r.as_str()) {
-                    if !response.is_empty() {
-                        // Ollama sends token-by-token; we accumulate and send per-line.
-                        let _ = tx.send(Event::AiOutputLine(response.to_string()));
+                // /api/chat returns {"message": {"content": "..."}}
+                if let Some(content) = val.pointer("/message/content").and_then(|c| c.as_str()) {
+                    if !content.is_empty() {
+                        let _ = tx.send(Event::AiOutputLine(content.to_string()));
                     }
                 }
-                // Check if generation is done.
                 if val.get("done").and_then(|d| d.as_bool()).unwrap_or(false) {
                     break;
                 }
@@ -714,7 +732,7 @@ mod tests {
         };
         let ctx = build_context(Path::new("/tmp"), Some(&entry), &[]);
         assert!(ctx.contains("test.rs"));
-        assert!(ctx.contains("Code"));
+        assert!(ctx.contains("source code"));
     }
 
     #[test]

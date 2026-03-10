@@ -297,6 +297,10 @@ pub struct AppState {
     pub ai_streaming: bool,
     /// Handle to abort the in-flight AI streaming task.
     pub ai_task_handle: Option<tokio::task::AbortHandle>,
+    /// Last-known dimensions of the AI panel area (set before draw).
+    /// Used by `ai_panel::update_max_scroll` so the render path stays `&AppState`.
+    pub ai_panel_width: u16,
+    pub ai_panel_height: u16,
 }
 
 impl AppState {
@@ -337,6 +341,8 @@ impl AppState {
             ai_max_scroll: 0,
             ai_streaming: false,
             ai_task_handle: None,
+            ai_panel_width: 0,
+            ai_panel_height: 0,
         }
     }
 
