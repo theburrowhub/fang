@@ -1,12 +1,16 @@
 //! Footer — one-line bar at the bottom of the screen.
 //!
-//! Prompt modes (CommandInput, ExternalCommand, NewFile) replace the bar with
-//! a vim-style inline prompt. All other modes render hints from
+//! Prompt modes (CommandInput, ExternalCommand, NewFile, AiPrompt) replace the
+//! bar with a vim-style inline prompt. All other modes render hints from
 //! [`crate::app::keybindings::footer_bindings`] — the single source of truth
 //! for key bindings, so the footer stays in sync automatically.
+//!
+//! Special case: when the AI chat panel is focused in Normal mode, we show
+//! AI-specific hints from the "AiChat" pseudo-mode instead of the full Normal
+//! hints.
 
 use crate::app::keybindings;
-use crate::app::state::{AppMode, AppState};
+use crate::app::state::{AppMode, AppState, FocusedPanel};
 use crate::ui::utils::key_hint;
 use ratatui::{prelude::*, widgets::Paragraph};
 
@@ -47,7 +51,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             ];
             spans.extend(key_hint("Enter", "Split"));
             spans.extend(key_hint("^P", "Popup"));
-            spans.extend(key_hint("Esc", "✕"));
+            spans.extend(key_hint("Esc", "\u{2715}"));
             Some(Line::from(spans))
         }
         AppMode::NewFile {
@@ -70,6 +74,19 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                 Span::styled("\u{2588}", Style::default().fg(Color::Yellow)),
             ]))
         }
+        AppMode::AiPrompt { prompt } => Some(Line::from(vec![
+            Span::styled(
+                "ai: ",
+                Style::default()
+                    .fg(Color::Magenta)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                prompt.as_str().to_owned(),
+                Style::default().fg(Color::White),
+            ),
+            Span::styled("\u{2588}", Style::default().fg(Color::Magenta)),
+        ])),
         _ => None,
     };
 
@@ -82,11 +99,16 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     }
 
     // ── Hint bar: derived from keybindings registry ───────────────────────
-    let mode_name = mode_str(&state.mode);
+    // When the AI chat panel is focused we show "AiChat" bindings instead of "Normal".
+    let mode_name = if state.mode == AppMode::Normal && state.focused_panel == FocusedPanel::AiChat
+    {
+        "AiChat"
+    } else {
+        mode_str(&state.mode)
+    };
     let bindings = keybindings::footer_bindings(mode_name);
 
     let spans: Vec<Span<'_>> = if bindings.is_empty() {
-        // Fallback for modes not listed in the registry
         vec![Span::styled(
             format!(" {} mode", mode_name),
             Style::default().fg(Color::DarkGray),
@@ -94,7 +116,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     } else {
         let mut s = Vec::new();
         for b in bindings {
-            // Use the compact `short` label in the footer; full `description` is in Help.
             s.extend(key_hint(b.key, b.short));
         }
         s
@@ -114,10 +135,12 @@ fn mode_str(mode: &AppMode) -> &'static str {
         AppMode::MakeTarget => "Make",
         AppMode::GitMenu { .. } => "Git",
         AppMode::GitForm { .. } => "GitForm",
-        AppMode::CommandInput { .. } => "Command", // handled by prompt above
-        AppMode::ExternalCommand { .. } => "Split", // handled by prompt above
-        AppMode::NewFile { .. } => "NewFile",      // handled by prompt above
+        AppMode::CommandInput { .. } => "Command",
+        AppMode::ExternalCommand { .. } => "Split",
+        AppMode::NewFile { .. } => "NewFile",
         AppMode::Settings { .. } => "Settings",
         AppMode::Help { .. } => "Help",
+        AppMode::AiPrompt { .. } => "AiPrompt",
+        AppMode::AiProviderSelect { .. } => "AiProvider",
     }
 }

@@ -116,6 +116,23 @@ pub fn all_bindings() -> Vec<KeyBinding> {
         KeyBinding::footer("Help", "h / Esc", "Close help panel", "Close"),
         KeyBinding::help_only("Help", "j / k", "Scroll line by line"),
         KeyBinding::help_only("Help", "PgUp/PgDn", "Scroll page"),
+        // ── AI — Normal mode bindings ─────────────────────────────────────
+        KeyBinding::footer("Normal", "a", "Toggle AI panel", "AI Panel"),
+        KeyBinding::footer("Normal", "i", "AI prompt", "AI"),
+        KeyBinding::footer("Normal", "I", "Change AI provider", "AI Cfg"),
+        KeyBinding::help_only("Normal", "Ctrl+R", "Reset AI session"),
+        // ── AI chat panel focused (pseudo-mode) ──────────────────────────
+        KeyBinding::footer("AiChat", "j/k", "Scroll AI chat", "Scroll"),
+        KeyBinding::footer("AiChat", "i", "Ask AI", "Ask AI"),
+        KeyBinding::footer("AiChat", "I", "Change provider", "Provider"),
+        KeyBinding::footer("AiChat", "Ctrl+R", "Reset session", "Reset"),
+        KeyBinding::footer("AiChat", "a", "Hide AI panel", "Hide"),
+        KeyBinding::footer("AiChat", "Tab", "Focus next panel", "Panel"),
+        KeyBinding::footer("AiChat", "q", "Quit", "Quit"),
+        // ── AI provider selection modal ───────────────────────────────────
+        KeyBinding::footer("AiProvider", "Enter", "Select provider", "Select"),
+        KeyBinding::footer("AiProvider", "Esc", "Cancel", "Cancel"),
+        KeyBinding::footer("AiProvider", "j/k", "Navigate", "Nav"),
     ]
 }
 

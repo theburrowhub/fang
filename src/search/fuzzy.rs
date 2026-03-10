@@ -142,7 +142,7 @@ mod tests {
     }
 
     fn make_state(names: &[(&str, bool)]) -> AppState {
-        let mut state = AppState::new(PathBuf::from("."));
+        let mut state = AppState::new(PathBuf::from("."), None);
         state.entries = names
             .iter()
             .map(|(name, is_dir)| make_entry(name, *is_dir))
@@ -291,7 +291,7 @@ mod tests {
 
     #[test]
     fn test_empty_entries_no_panic() {
-        let mut state = AppState::new(std::path::PathBuf::from("."));
+        let mut state = AppState::new(std::path::PathBuf::from("."), None);
         state.search_query = "anything".to_string();
         apply_search(&mut state);
         assert_eq!(state.filtered_indices.len(), 0);
