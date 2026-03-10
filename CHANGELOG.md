@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.5.0] — 2026-03-10
+
+### Features
+
+- Tmux-aware splits — focus transfer + popup overlay (#28) ([2d9bab7](https://github.com/theburrowhub/fang/commit/2d9bab752449e2db6d9e5e2cca9067f1d59e78aa))
+
+
 ## [0.4.0] — 2026-03-09
 
 ### Features
