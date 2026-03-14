@@ -5,6 +5,7 @@ pub enum Action {
     NavDown,
     NavLeft,  // Go to parent directory
     NavRight, // Enter selected directory
+    CancelMake,
     TogglePreview,
     OpenSearch,
     SearchInput(char),
@@ -121,6 +122,8 @@ pub fn map_key_to_action(
         },
         AppMode::Normal => match key.code {
             KeyCode::Char('q') | KeyCode::Char('Q') => Action::Quit,
+            // Esc / Ctrl+C cancel an in-flight make target (no-op when make is idle).
+            KeyCode::Esc => Action::CancelMake,
             // When preview panel has focus, j/k/arrows scroll the content.
             KeyCode::Char('j') | KeyCode::Down if *focused_panel == FocusedPanel::Preview => {
                 Action::PreviewScrollDown

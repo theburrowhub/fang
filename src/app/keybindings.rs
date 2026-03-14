@@ -69,6 +69,7 @@ pub fn all_bindings() -> Vec<KeyBinding> {
         KeyBinding::footer("Normal", ":", "Run shell command", "Run"),
         KeyBinding::footer("Normal", ";", "Open in terminal split", "Split"),
         KeyBinding::footer("Normal", "m", "Makefile targets", "Make"),
+        KeyBinding::help_only("Normal", "Esc", "Cancel running make target"),
         KeyBinding::footer("Normal", "g", "Git operations", "Git"),
         KeyBinding::footer("Normal", "c", "Copy relative path to clipboard", "Copy rel"),
         KeyBinding::footer("Normal", "C", "Copy absolute path to clipboard", "Copy abs"),

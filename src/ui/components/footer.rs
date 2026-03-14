@@ -99,6 +99,19 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     }
 
     // ── Hint bar: derived from keybindings registry ───────────────────────
+    // While a make target is running, replace the Normal-mode hints with a
+    // prominent cancel reminder so the user knows they can press Esc.
+    if state.mode == AppMode::Normal && state.make_cancel_tx.is_some() {
+        let mut spans = Vec::new();
+        spans.extend(key_hint("Esc", "Cancel make"));
+        spans.extend(key_hint("j/k", "Scroll"));
+        frame.render_widget(
+            Paragraph::new(Line::from(spans)).style(Style::default().bg(Color::Reset)),
+            line_area,
+        );
+        return;
+    }
+
     // When the AI chat panel is focused we show "AiChat" bindings instead of "Normal".
     let mode_name = if state.mode == AppMode::Normal && state.focused_panel == FocusedPanel::AiChat
     {
