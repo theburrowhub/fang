@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.7.0] — 2026-03-14
+
+### Features
+
+- Remove sidebar panel + add root-dir navigation lock (#29) ([10cfe72](https://github.com/theburrowhub/fang/commit/10cfe72e0d0d31654d75490b9581e0b7adb59f4c))
+
+
 ## [0.6.0] — 2026-03-10
 
 ### Features
