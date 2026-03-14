@@ -9,25 +9,13 @@ use std::path::PathBuf;
 
 /// Panel size and visibility configuration.
 ///
-/// Size invariant: `sidebar_pct + file_list_pct + preview_pct == 100`
+/// Size invariant: `file_list_pct + preview_pct == 100`
 /// (`preview_pct` is derived and not stored on disk.)
-///
-/// Visibility fields control the *default* state on launch.
-/// The `s`/`p` keys toggle visibility temporarily for the session but do not
-/// persist; only changing the value here (via Ctrl+S) saves to disk.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayoutConfig {
-    /// Sidebar tree panel width (%, default 15).
-    #[serde(default = "default_sidebar_pct")]
-    pub sidebar_pct: u16,
-
-    /// File-list panel width (%, default 20).
+    /// File-list panel width (%, default 35).
     #[serde(default = "default_file_list_pct")]
     pub file_list_pct: u16,
-
-    /// Whether the sidebar panel is visible on launch (default true).
-    #[serde(default = "default_true")]
-    pub sidebar_visible: bool,
 
     /// Whether the preview panel is visible on launch (default true).
     #[serde(default = "default_true")]
@@ -36,36 +24,25 @@ pub struct LayoutConfig {
 
 impl LayoutConfig {
     pub fn preview_pct(&self) -> u16 {
-        100u16
-            .saturating_sub(self.sidebar_pct)
-            .saturating_sub(self.file_list_pct)
+        100u16.saturating_sub(self.file_list_pct)
     }
 
     pub fn clamp(&mut self) {
-        self.sidebar_pct = self.sidebar_pct.clamp(5, 50);
-        self.file_list_pct = self.file_list_pct.clamp(5, 50);
-        if self.sidebar_pct + self.file_list_pct > 95 {
-            self.file_list_pct = 95 - self.sidebar_pct;
-        }
+        self.file_list_pct = self.file_list_pct.clamp(10, 90);
     }
 }
 
 impl Default for LayoutConfig {
     fn default() -> Self {
         Self {
-            sidebar_pct: default_sidebar_pct(),
             file_list_pct: default_file_list_pct(),
-            sidebar_visible: true,
             preview_visible: true,
         }
     }
 }
 
-fn default_sidebar_pct() -> u16 {
-    15
-}
 fn default_file_list_pct() -> u16 {
-    20
+    35
 }
 fn default_true() -> bool {
     true
@@ -175,16 +152,10 @@ pub fn entries_from_config(cfg: &Config) -> Vec<SettingEntry> {
     vec![
         // ── Panel sizes ───────────────────────────────────────────────────
         SettingEntry {
-            key: "layout.sidebar_pct",
-            description: "Sidebar width",
-            value: cfg.layout.sidebar_pct,
-            kind: EntryKind::Editable { min: 5, max: 50 },
-        },
-        SettingEntry {
             key: "layout.file_list_pct",
             description: "File list width",
             value: cfg.layout.file_list_pct,
-            kind: EntryKind::Editable { min: 5, max: 50 },
+            kind: EntryKind::Editable { min: 10, max: 90 },
         },
         SettingEntry {
             key: "layout.preview_pct",
@@ -193,12 +164,6 @@ pub fn entries_from_config(cfg: &Config) -> Vec<SettingEntry> {
             kind: EntryKind::Derived,
         },
         // ── Panel visibility (default state on launch) ────────────────────
-        SettingEntry {
-            key: "layout.sidebar_visible",
-            description: "Sidebar visible on launch",
-            value: if cfg.layout.sidebar_visible { 1 } else { 0 },
-            kind: EntryKind::Toggle,
-        },
         SettingEntry {
             key: "layout.preview_visible",
             description: "Preview visible on launch",
@@ -211,9 +176,7 @@ pub fn entries_from_config(cfg: &Config) -> Vec<SettingEntry> {
 pub fn apply_entries(cfg: &mut Config, entries: &[SettingEntry]) {
     for e in entries {
         match e.key {
-            "layout.sidebar_pct" => cfg.layout.sidebar_pct = e.value,
             "layout.file_list_pct" => cfg.layout.file_list_pct = e.value,
-            "layout.sidebar_visible" => cfg.layout.sidebar_visible = e.as_bool(),
             "layout.preview_visible" => cfg.layout.preview_visible = e.as_bool(),
             _ => {}
         }

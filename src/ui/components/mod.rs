@@ -9,4 +9,3 @@ pub mod help;
 pub mod make_modal;
 pub mod preview;
 pub mod settings_modal;
-pub mod sidebar;
