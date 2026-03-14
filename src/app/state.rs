@@ -239,6 +239,9 @@ pub struct AppState {
     pub make_targets: Vec<MakeTarget>,
     pub make_target_selected: usize,
     pub make_output: Vec<String>,
+    /// Cancellation sender for the in-flight `make` task.
+    /// `Some` while make is running; `None` when idle.
+    pub make_cancel_tx: Option<tokio::sync::oneshot::Sender<()>>,
 
     // Layout toggles
     pub preview_visible: bool,
@@ -308,6 +311,7 @@ impl AppState {
             make_targets: vec![],
             make_target_selected: 0,
             make_output: vec![],
+            make_cancel_tx: None,
             preview_visible: true,
             status_message: None,
             header_info: HeaderInfo::default(),

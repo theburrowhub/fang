@@ -383,15 +383,23 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
             if let Some(target) = state.make_targets.get(state.make_target_selected) {
                 let target_name = target.name.clone();
                 let dir = state.current_dir.clone();
-                let tx = tx.clone();
+                let tx2 = tx.clone();
                 state.make_output.clear();
                 state.preview_state = app::state::PreviewState::MakeOutput { output: vec![] };
                 state.preview_scroll = 0;
                 state.mode = app::state::AppMode::Normal;
 
+                let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel();
+                state.make_cancel_tx = Some(cancel_tx);
+
                 tokio::spawn(async move {
-                    let _ = commands::make::run_target(&target_name, &dir, tx).await;
+                    let _ = commands::make::run_target(&target_name, &dir, tx2, cancel_rx).await;
                 });
+            }
+        }
+        Action::CancelMake => {
+            if let Some(cancel_tx) = state.make_cancel_tx.take() {
+                let _ = cancel_tx.send(());
             }
         }
         Action::OpenCommandInput => {
@@ -1132,8 +1140,11 @@ fn handle_event(event: Event, state: &mut AppState, tx: &UnboundedSender<Event>)
             state.make_output.push(line);
         }
         Event::MakeDone { exit_code } => {
+            state.make_cancel_tx = None; // task is done; clear the cancel channel
             let msg = if exit_code == 0 {
                 "make completed successfully".to_string()
+            } else if exit_code == -1 {
+                "make cancelled".to_string()
             } else {
                 format!("make exited with code {}", exit_code)
             };

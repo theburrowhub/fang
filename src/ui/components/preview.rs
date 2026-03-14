@@ -224,7 +224,12 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         }
 
         PreviewState::MakeOutput { output } => {
-            let inner = render_block(frame, area, border_style, " Make Output ".to_owned());
+            let title = if state.make_cancel_tx.is_some() {
+                " Make Output  [Esc] cancel ".to_owned()
+            } else {
+                " Make Output ".to_owned()
+            };
+            let inner = render_block(frame, area, border_style, title);
 
             let inner_height = inner.height as usize;
             let scroll = state
