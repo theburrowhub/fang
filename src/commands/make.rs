@@ -203,6 +203,8 @@ pub async fn run_target(
     };
 
     // Capture the PID (= pgid after process_group(0)) before any await.
+    // Only used in the Unix cancel path; guard to avoid unused-variable on Windows.
+    #[cfg(unix)]
     let child_pid = child.id();
 
     let stdout = child.stdout.take().expect("stdout should be captured");
