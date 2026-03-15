@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.7.1] — 2026-03-15
+
+### Bug Fixes
+
+- Make targets no longer hang fang — add Esc to cancel (#30) ([86d0747](https://github.com/theburrowhub/fang/commit/86d0747ad4e58bed7720fcfe06ad7fa72fb87c7f))
+
+
 ## [0.7.0] — 2026-03-14
 
 ### Features
