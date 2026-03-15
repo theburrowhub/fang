@@ -1,6 +1,8 @@
 use crate::app::events::Event;
 use crate::app::state::MakeTarget;
 use anyhow::{Context, Result};
+#[cfg(unix)]
+use libc;
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc::UnboundedSender;
@@ -147,7 +149,17 @@ fn find_make_binary() -> Option<std::path::PathBuf> {
     None
 }
 
-pub async fn run_target(target: &str, dir: &Path, tx: UnboundedSender<Event>) -> Result<()> {
+/// Run `make <target>` and stream output.
+///
+/// Accepts a `cancel_rx` oneshot — sending `()` on the sender side (or
+/// dropping it) kills the entire make process group and sends `MakeDone { -1 }`.
+/// This prevents fang from hanging when a target launches a long-running app.
+pub async fn run_target(
+    target: &str,
+    dir: &Path,
+    tx: UnboundedSender<Event>,
+    cancel_rx: tokio::sync::oneshot::Receiver<()>,
+) -> Result<()> {
     use tokio::process::Command;
 
     let make_bin = match find_make_binary() {
@@ -167,13 +179,18 @@ pub async fn run_target(target: &str, dir: &Path, tx: UnboundedSender<Event>) ->
         }
     };
 
-    let mut child = match Command::new(&make_bin)
-        .arg(target)
+    let mut cmd = Command::new(&make_bin);
+    cmd.arg(target)
         .current_dir(dir)
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-    {
+        .stderr(std::process::Stdio::piped());
+
+    // Put make in its own process group so we can kill the entire tree
+    // (make + any child processes it spawns, e.g. a compiled app) on cancel.
+    #[cfg(unix)]
+    cmd.process_group(0);
+
+    let mut child = match cmd.spawn() {
         Ok(child) => child,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             let _ = tx.send(Event::MakeOutputLine(
@@ -185,6 +202,11 @@ pub async fn run_target(target: &str, dir: &Path, tx: UnboundedSender<Event>) ->
         Err(e) => return Err(e).with_context(|| format!("Failed to spawn make {}", target)),
     };
 
+    // Capture the PID (= pgid after process_group(0)) before any await.
+    // Only used in the Unix cancel path; guard to avoid unused-variable on Windows.
+    #[cfg(unix)]
+    let child_pid = child.id();
+
     let stdout = child.stdout.take().expect("stdout should be captured");
     let stderr = child.stderr.take().expect("stderr should be captured");
 
@@ -194,7 +216,6 @@ pub async fn run_target(target: &str, dir: &Path, tx: UnboundedSender<Event>) ->
     let tx_stdout = tx.clone();
     let tx_stderr = tx.clone();
 
-    // Stream stdout and stderr concurrently
     let stdout_task = tokio::spawn(async move {
         while let Ok(Some(line)) = stdout_reader.next_line().await {
             if tx_stdout.send(Event::MakeOutputLine(line)).is_err() {
@@ -214,17 +235,37 @@ pub async fn run_target(target: &str, dir: &Path, tx: UnboundedSender<Event>) ->
         }
     });
 
-    // Wait for process to finish and both readers to complete
-    let exit_status = child
-        .wait()
-        .await
-        .with_context(|| "Failed to wait for make process")?;
+    tokio::select! {
+        // Normal completion
+        result = child.wait() => {
+            let _ = tokio::join!(stdout_task, stderr_task);
+            let exit_code = result.map(|s| s.code().unwrap_or(-1)).unwrap_or(-1);
+            let _ = tx.send(Event::MakeDone { exit_code });
+        }
 
-    // Wait for readers to flush
-    let _ = tokio::join!(stdout_task, stderr_task);
+        // Cancelled by the user (Esc / Ctrl+C)
+        _ = cancel_rx => {
+            // Kill the entire process group: make + any subprocesses it spawned.
+            #[cfg(unix)]
+            if let Some(pid) = child_pid {
+                unsafe {
+                    libc::kill(-(pid as libc::pid_t), libc::SIGKILL);
+                }
+            }
+            #[cfg(not(unix))]
+            let _ = child.kill().await;
 
-    let exit_code = exit_status.code().unwrap_or(-1);
-    let _ = tx.send(Event::MakeDone { exit_code });
+            stdout_task.abort();
+            stderr_task.abort();
+            // Reap to avoid a zombie (best-effort, short timeout).
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_millis(500),
+                child.wait(),
+            )
+            .await;
+            let _ = tx.send(Event::MakeDone { exit_code: -1 });
+        }
+    }
 
     Ok(())
 }
@@ -476,8 +517,9 @@ clean:
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let dir_clone = dir.clone();
+        let (_cancel_tx, cancel_rx) = tokio::sync::oneshot::channel();
         tokio::spawn(async move {
-            let _ = run_target("hello", &dir_clone, tx).await;
+            let _ = run_target("hello", &dir_clone, tx, cancel_rx).await;
         });
 
         let mut output_lines = vec![];
@@ -520,8 +562,9 @@ clean:
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let dir_clone = dir.clone();
+        let (_cancel_tx, cancel_rx) = tokio::sync::oneshot::channel();
         tokio::spawn(async move {
-            let _ = run_target("fail", &dir_clone, tx).await;
+            let _ = run_target("fail", &dir_clone, tx, cancel_rx).await;
         });
 
         let mut exit_code = None;
