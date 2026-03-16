@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.7.3] — 2026-03-16
+
+### Bug Fixes
+
+- Preview scroll artifacts — clip+pad lines instead of wrap+scroll (#32) ([81596d5](https://github.com/theburrowhub/fang/commit/81596d54331d87fd8794f575c16b4a6bb5c7b791))
+
+
 ## [0.7.2] — 2026-03-16
 
 ### Bug Fixes
