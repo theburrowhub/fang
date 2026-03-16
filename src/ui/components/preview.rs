@@ -5,24 +5,11 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 
-/// Simple conversion without padding/clipping — used for wrapped Text previews.
-fn styled_line_to_line(sl: &StyledLine) -> Line<'static> {
-    Line::from(
-        sl.spans
-            .iter()
-            .map(|(style, text)| Span::styled(text.clone(), *style))
-            .collect::<Vec<_>>(),
-    )
-}
-
-/// Convert a StyledLine into a ratatui Line, padded to `width` so every cell
-/// in the row is explicitly written (prevents old content bleeding through).
-/// Build a `Line` from `sl` that is exactly `width` cells wide:
+/// Convert a StyledLine into a ratatui Line that is exactly `width` cells wide:
 /// - Lines shorter than `width` are padded with trailing spaces so every
 ///   cell in the row is explicitly written (prevents stale cell artefacts).
-/// - Lines longer than `width` are **clipped** at the right edge so they
+/// - Lines longer than `width` are clipped at the right edge so they
 ///   cannot overflow into adjacent panels.
-#[allow(dead_code)]
 fn styled_line_to_line_padded(sl: &StyledLine, width: usize) -> Line<'static> {
     if width == 0 {
         return Line::from(vec![]);
@@ -153,17 +140,26 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             };
             let inner = render_block(frame, area, border_style, title);
 
-            // Build the full paragraph with wrapping so visual-line scroll is correct.
-            // Using Wrap means we must scroll by visual lines, not source lines.
-            let all_lines: Vec<Line<'static>> = lines.iter().map(styled_line_to_line).collect();
-            let paragraph = Paragraph::new(all_lines).wrap(Wrap { trim: false });
+            let inner_height = inner.height as usize;
+            let inner_width = inner.width as usize;
 
-            // Compute total visual lines (requires unstable-rendered-line-info feature).
-            let total_visual = paragraph.line_count(inner.width);
-            let max_scroll = total_visual.saturating_sub(inner.height as usize);
-            let scroll_y = (state.preview_scroll.min(max_scroll)) as u16;
+            // Scroll by source lines (no wrap).
+            // Each line is padded/clipped to inner_width so every cell in every
+            // row is written explicitly — this is the only reliable way to prevent
+            // stale terminal cells from a previous file or scroll position bleeding
+            // through. Paragraph::wrap + scroll leaves unwritten cells when the
+            // visible slice is shorter than the panel height.
+            let max_scroll = lines.len().saturating_sub(inner_height);
+            let scroll = state.preview_scroll.min(max_scroll);
 
-            frame.render_widget(paragraph.scroll((scroll_y, 0)), inner);
+            let display: Vec<Line<'static>> = lines
+                .iter()
+                .skip(scroll)
+                .take(inner_height)
+                .map(|sl| styled_line_to_line_padded(sl, inner_width))
+                .collect();
+
+            frame.render_widget(Paragraph::new(display), inner);
         }
 
         PreviewState::Binary { size, mime_hint } => {
