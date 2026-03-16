@@ -308,7 +308,9 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
         }
         Action::NavLeft => {
             if let Some(parent) = state.current_dir.parent().map(|p| p.to_path_buf()) {
-                if parent >= state.root_dir {
+                // starts_with checks path components, not byte strings, so
+                // "/home/user/proj2" correctly does NOT start_with "/home/user/proj".
+                if parent.starts_with(&state.root_dir) {
                     navigate_to_dir(state, parent, tx);
                 }
             }
@@ -1272,8 +1274,13 @@ async fn main() -> Result<()> {
         // Unknown flags are silently ignored for forward-compatibility.
     }
 
-    let initial_dir = initial_dir_opt
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let initial_dir = {
+        let raw = initial_dir_opt
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        // Canonicalize so root_dir is always absolute. Relative paths like "." would
+        // compare incorrectly against the absolute entry paths that come from readdir.
+        std::fs::canonicalize(&raw).unwrap_or(raw)
+    };
 
     tracing::info!("Fang starting in {:?}", initial_dir);
 
