@@ -4,6 +4,7 @@ use std::sync::OnceLock;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::ThemeSet;
 use syntect::parsing::SyntaxSet;
+use syntect::util::LinesWithEndings;
 
 static SYNTAX_SET: OnceLock<SyntaxSet> = OnceLock::new();
 static THEME_SET: OnceLock<ThemeSet> = OnceLock::new();
@@ -95,16 +96,31 @@ fn highlight_content(path: &Path, content: String) -> PreviewState {
     let mut total_lines = 0usize;
     let mut lines: Vec<StyledLine> = Vec::new();
 
-    for line in content.lines() {
+    // LinesWithEndings preserves the trailing '\n' on each line.
+    // syntect's HighlightLines REQUIRES the newline to correctly apply
+    // end-of-line anchors in grammar rules — without it, single-line scopes
+    // (comments, strings that end at EOL) bleed their style into the next line.
+    for line in LinesWithEndings::from(&content) {
         total_lines += 1;
         if total_lines <= MAX_LINES {
             let spans = match highlighter.highlight_line(line, ss) {
                 Ok(ranges) => ranges
                     .into_iter()
-                    .map(|(style, text)| (syntect_style_to_ratatui(style), text.to_string()))
+                    .filter_map(|(style, text)| {
+                        // Strip the trailing newline syntect needs but ratatui must not see.
+                        let cleaned = text.trim_end_matches('\n').trim_end_matches('\r');
+                        if cleaned.is_empty() {
+                            None
+                        } else {
+                            Some((syntect_style_to_ratatui(style), cleaned.to_string()))
+                        }
+                    })
                     .collect(),
-                // Fallback to plain text span on highlight error — never silently drop lines
-                Err(_) => vec![(ratatui::style::Style::default(), line.to_string())],
+                // Fallback to plain text on highlight error — never silently drop lines
+                Err(_) => {
+                    let cleaned = line.trim_end_matches('\n').trim_end_matches('\r');
+                    vec![(ratatui::style::Style::default(), cleaned.to_string())]
+                }
             };
             lines.push(StyledLine { spans });
         }
