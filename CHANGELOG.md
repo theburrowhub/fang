@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.7.2] — 2026-03-16
+
+### Bug Fixes
+
+- Syntax comment color bleeds into next line (#31) ([ea5744d](https://github.com/theburrowhub/fang/commit/ea5744d9530ad5a0460002b735a644b55dfca3ce))
+
+
 ## [0.7.1] — 2026-03-15
 
 ### Bug Fixes
