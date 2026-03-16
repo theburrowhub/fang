@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.7.4] — 2026-03-16
+
+### Bug Fixes
+
+- Root-dir navigation lock — canonicalize path and use starts_with (#33) ([6317625](https://github.com/theburrowhub/fang/commit/63176254fe4101a6bd02e12ef34557289ff25ac5))
+
+
 ## [0.7.3] — 2026-03-16
 
 ### Bug Fixes
