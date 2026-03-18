@@ -102,16 +102,20 @@ pub fn map_key_to_action(
 
     match mode {
         AppMode::Normal if *focused_panel == FocusedPanel::AiChat => match key.code {
-            // When AI chat panel is focused only scrolling, quit, Tab, and AI keys work.
-            // Navigation keys (h/l/arrows/Enter/Backspace) are blocked so they don't
-            // accidentally change directory while reading the AI output.
-            KeyCode::Char('q') | KeyCode::Char('Q') => Action::Quit,
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
+            // j/k and vertical arrows scroll the AI chat panel.
             KeyCode::Char('j') | KeyCode::Down => Action::AiScrollDown,
             KeyCode::Char('k') | KeyCode::Up => Action::AiScrollUp,
             KeyCode::PageDown => Action::AiScrollDown,
             KeyCode::PageUp => Action::AiScrollUp,
+            // Directory navigation always works regardless of which panel is focused.
+            KeyCode::Char('u') | KeyCode::Left | KeyCode::Backspace => Action::NavLeft,
+            KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => Action::NavRight,
+            // Other universal keys
+            KeyCode::Char('q') | KeyCode::Char('Q') => Action::Quit,
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
+            KeyCode::Esc => Action::CancelMake,
             KeyCode::Tab => Action::FocusNext,
+            KeyCode::BackTab => Action::FocusPrev,
             KeyCode::Char('a') => Action::ToggleAiPanel,
             KeyCode::Char('i') => Action::OpenAiPrompt,
             KeyCode::Char('I') => Action::OpenAiProviderSelect,
