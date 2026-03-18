@@ -1107,7 +1107,7 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
             }
         }
         Action::CommandPaletteNavUp => {
-            if let app::state::AppMode::CommandPalette { query, selected } = &mut state.mode {
+            if let app::state::AppMode::CommandPalette { query: _, selected } = &mut state.mode {
                 if *selected > 0 {
                     *selected -= 1;
                 }
