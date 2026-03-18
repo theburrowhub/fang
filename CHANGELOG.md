@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.9.0] — 2026-03-18
+
+### Features
+
+- Enhanced git status visuals + diff view (d key) (#36) ([54ee03b](https://github.com/theburrowhub/fang/commit/54ee03b2dabeeb51b142455a90cc229e30b48e1c))
+
+
 ## [0.8.0] — 2026-03-18
 
 ### Features
