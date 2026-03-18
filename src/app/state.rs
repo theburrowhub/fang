@@ -148,6 +148,13 @@ pub enum AppMode {
     AiProviderSelect {
         selected: usize,
     },
+    /// Spotlight-style command palette (activated with `Ctrl+K`).
+    CommandPalette {
+        /// Live search query typed by the user.
+        query: String,
+        /// Index of the highlighted item in the filtered list.
+        selected: usize,
+    },
 }
 
 // ─── FocusedPanel ─────────────────────────────────────────────────────────────

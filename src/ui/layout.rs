@@ -101,6 +101,12 @@ pub fn draw(frame: &mut Frame, state: &AppState) {
         return;
     }
 
+    if matches!(state.mode, AppMode::CommandPalette { .. }) {
+        render_main_panels(frame, main_area, state);
+        components::command_palette::render(frame, area, state);
+        return;
+    }
+
     render_main_panels(frame, main_area, state);
 }
 

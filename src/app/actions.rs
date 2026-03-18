@@ -88,6 +88,14 @@ pub enum Action {
     AiScrollUp,
     AiScrollDown,
     ResetAiSession,
+    // Command palette (Ctrl+K)
+    OpenCommandPalette,
+    CommandPaletteChar(char),
+    CommandPaletteBackspace,
+    CommandPaletteNavUp,
+    CommandPaletteNavDown,
+    RunCommandPaletteItem,
+    CloseCommandPalette,
     Noop,
 }
 
@@ -102,6 +110,15 @@ pub fn map_key_to_action(
 
     match mode {
         AppMode::Normal if *focused_panel == FocusedPanel::AiChat => match key.code {
+            // Guarded arms (with modifier checks) must come BEFORE the unguarded
+            // Char arms, or the unguarded arm shadows them.
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
+            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                Action::ResetAiSession
+            }
+            KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                Action::OpenCommandPalette
+            }
             // j/k and vertical arrows scroll the AI chat panel.
             KeyCode::Char('j') | KeyCode::Down => Action::AiScrollDown,
             KeyCode::Char('k') | KeyCode::Up => Action::AiScrollUp,
@@ -112,16 +129,12 @@ pub fn map_key_to_action(
             KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => Action::NavRight,
             // Other universal keys
             KeyCode::Char('q') | KeyCode::Char('Q') => Action::Quit,
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
             KeyCode::Esc => Action::CancelMake,
             KeyCode::Tab => Action::FocusNext,
             KeyCode::BackTab => Action::FocusPrev,
             KeyCode::Char('a') => Action::ToggleAiPanel,
             KeyCode::Char('i') => Action::OpenAiPrompt,
             KeyCode::Char('I') => Action::OpenAiProviderSelect,
-            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                Action::ResetAiSession
-            }
             _ => Action::Noop,
         },
         AppMode::Normal => match key.code {
@@ -135,6 +148,18 @@ pub fn map_key_to_action(
             KeyCode::Char('k') | KeyCode::Up if *focused_panel == FocusedPanel::Preview => {
                 Action::PreviewScrollUp
             }
+            // Guarded arms (with modifier checks) must come BEFORE the unguarded
+            // Char arms, or the unguarded arm shadows them.
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                Action::OpenSettings
+            }
+            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                Action::ResetAiSession
+            }
+            KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                Action::OpenCommandPalette
+            }
             KeyCode::Char('j') | KeyCode::Down => Action::NavDown,
             KeyCode::Char('k') | KeyCode::Up => Action::NavUp,
             // 'h' opens Help; 'u' (and arrow/backspace) go to parent directory.
@@ -143,18 +168,11 @@ pub fn map_key_to_action(
             KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => Action::NavRight,
             KeyCode::Char('/') => Action::OpenSearch,
             KeyCode::Char('m') | KeyCode::Char('M') => Action::OpenMakeModal,
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
-            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                Action::OpenSettings
-            }
             KeyCode::Char('p') => Action::TogglePreview,
             KeyCode::Tab => Action::FocusNext,
             KeyCode::BackTab => Action::FocusPrev,
             KeyCode::PageUp => Action::PreviewScrollUp,
             KeyCode::PageDown => Action::PreviewScrollDown,
-            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                Action::ResetAiSession
-            }
             KeyCode::Char(':') => Action::OpenCommandInput,
             KeyCode::Char(';') => Action::OpenExternalCommand,
             KeyCode::Char('g') | KeyCode::Char('G') => Action::OpenGitMenu,
@@ -265,6 +283,16 @@ pub fn map_key_to_action(
             KeyCode::Down | KeyCode::Char('j') => Action::AiProviderNavDown,
             KeyCode::Up | KeyCode::Char('k') => Action::AiProviderNavUp,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
+            _ => Action::Noop,
+        },
+        AppMode::CommandPalette { .. } => match key.code {
+            KeyCode::Esc => Action::CloseCommandPalette,
+            KeyCode::Enter => Action::RunCommandPaletteItem,
+            KeyCode::Backspace => Action::CommandPaletteBackspace,
+            KeyCode::Down | KeyCode::Char('j') => Action::CommandPaletteNavDown,
+            KeyCode::Up | KeyCode::Char('k') => Action::CommandPaletteNavUp,
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
+            KeyCode::Char(c) => Action::CommandPaletteChar(c),
             _ => Action::Noop,
         },
     }

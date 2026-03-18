@@ -1,5 +1,6 @@
 pub mod ai_modal;
 pub mod ai_panel;
+pub mod command_palette;
 pub mod file_list;
 pub mod footer;
 pub mod git_form;
