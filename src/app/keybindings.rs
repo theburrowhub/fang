@@ -72,6 +72,7 @@ pub fn all_bindings() -> Vec<KeyBinding> {
         KeyBinding::footer("Normal", "m", "Makefile targets", "Make"),
         KeyBinding::help_only("Normal", "Esc", "Cancel running make target"),
         KeyBinding::footer("Normal", "g", "Git operations", "Git"),
+        KeyBinding::footer("Normal", "d", "Toggle git diff view", "Diff"),
         KeyBinding::footer("Normal", "c", "Copy relative path to clipboard", "Copy rel"),
         KeyBinding::footer("Normal", "C", "Copy absolute path to clipboard", "Copy abs"),
         KeyBinding::footer("Normal", "o", "Open with default app", "Open"),

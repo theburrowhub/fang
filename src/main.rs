@@ -69,6 +69,27 @@ fn schedule_preview(state: &AppState, tx: &UnboundedSender<Event>) {
     }
 }
 
+/// Schedule a git diff load for the currently selected file.
+fn schedule_git_diff(state: &AppState, tx: &UnboundedSender<Event>) {
+    if let Some(entry) = state.selected_entry() {
+        let path = entry.path.clone();
+        let tx = tx.clone();
+        tokio::spawn(async move {
+            let lines = commands::git::file_diff(&path).await;
+            let _ = tx.send(Event::GitDiffReady(lines));
+        });
+    }
+}
+
+/// Route to the appropriate preview loader based on `preview_git_diff` flag.
+fn schedule_preview_or_diff(state: &AppState, tx: &UnboundedSender<Event>) {
+    if state.preview_git_diff {
+        schedule_git_diff(state, tx);
+    } else {
+        schedule_preview(state, tx);
+    }
+}
+
 /// Collects git branch and dev environment info for the given directory.
 /// Runs dev env probes concurrently via tokio::join! and sends HeaderInfoReady when done.
 fn schedule_header_info_load(dir: &std::path::Path, tx: &UnboundedSender<Event>) {
@@ -272,7 +293,7 @@ fn apply_search_update(state: &mut AppState, tx: &UnboundedSender<Event>) {
     }
     state.selected_index = 0;
     search::fuzzy::apply_search(state);
-    schedule_preview(state, tx);
+    schedule_preview_or_diff(state, tx);
 }
 
 /// Write `text` to the system clipboard using the platform clipboard tool.
@@ -294,7 +315,7 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
                 state.preview_state = app::state::PreviewState::None;
                 state.preview_scroll = 0;
                 state.needs_terminal_clear = true;
-                schedule_preview(state, tx);
+                schedule_preview_or_diff(state, tx);
             }
         }
         Action::NavUp => {
@@ -303,7 +324,7 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
                 state.preview_state = app::state::PreviewState::None;
                 state.preview_scroll = 0;
                 state.needs_terminal_clear = true;
-                schedule_preview(state, tx);
+                schedule_preview_or_diff(state, tx);
             }
         }
         Action::NavLeft => {
@@ -324,6 +345,13 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
         }
         Action::TogglePreview => {
             state.preview_visible = !state.preview_visible;
+        }
+        Action::ToggleGitDiff => {
+            state.preview_git_diff = !state.preview_git_diff;
+            state.preview_state = app::state::PreviewState::Loading;
+            state.preview_scroll = 0;
+            state.needs_terminal_clear = true;
+            schedule_preview_or_diff(state, tx);
         }
         Action::OpenSearch => {
             state.mode = app::state::AppMode::Search {
@@ -1220,7 +1248,7 @@ fn handle_event(event: Event, state: &mut AppState, tx: &UnboundedSender<Event>)
                 }
                 // Reset selection and schedule preview for the first entry
                 state.selected_index = 0;
-                schedule_preview(state, tx);
+                schedule_preview_or_diff(state, tx);
             }
         }
         Event::HeaderInfoReady(info) => {
@@ -1228,6 +1256,9 @@ fn handle_event(event: Event, state: &mut AppState, tx: &UnboundedSender<Event>)
         }
         Event::GitStatusReady(status_map) => {
             state.git_file_status = status_map;
+        }
+        Event::GitDiffReady(lines) => {
+            state.preview_state = app::state::PreviewState::GitDiff { lines };
         }
         Event::CommandOutput { exit_code, .. } => {
             // Command finished: release the stdin pipe (signals EOF to child) and

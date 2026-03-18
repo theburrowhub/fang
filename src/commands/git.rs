@@ -753,6 +753,80 @@ pub async fn file_status(
     map
 }
 
+/// Return the git diff of a single file as styled lines ready for the preview panel.
+///
+/// Tries `git diff HEAD -- <path>` first; falls back to `git diff --cached -- <path>`
+/// (for newly staged files with no working-tree changes). Returns an empty vec when
+/// the file has no diff (e.g. untracked, clean, or not in a git repo).
+pub async fn file_diff(path: &std::path::Path) -> Vec<crate::app::state::StyledLine> {
+    use crate::app::state::StyledLine;
+    use ratatui::style::{Color, Modifier, Style};
+
+    let git = match find_git_binary() {
+        Some(p) => p,
+        None => return vec![],
+    };
+
+    let path_str = match path.to_str() {
+        Some(s) => s,
+        None => return vec![],
+    };
+
+    // Try working-tree diff first, then staged diff
+    let output = {
+        let o = tokio::process::Command::new(&git)
+            .args(["diff", "HEAD", "--", path_str])
+            .output()
+            .await
+            .ok();
+        match o {
+            Some(ref out) if !out.stdout.is_empty() => out.stdout.clone(),
+            _ => tokio::process::Command::new(&git)
+                .args(["diff", "--cached", "--", path_str])
+                .output()
+                .await
+                .ok()
+                .map(|o| o.stdout)
+                .unwrap_or_default(),
+        }
+    };
+
+    if output.is_empty() {
+        return vec![StyledLine {
+            spans: vec![(
+                Style::default().fg(Color::DarkGray),
+                "No changes — file is clean or untracked".to_string(),
+            )],
+        }];
+    }
+
+    String::from_utf8_lossy(&output)
+        .lines()
+        .map(|line| {
+            let style = if line.starts_with('+') && !line.starts_with("+++") {
+                Style::default().fg(Color::Green)
+            } else if line.starts_with('-') && !line.starts_with("---") {
+                Style::default().fg(Color::Red)
+            } else if line.starts_with("@@") {
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            } else if line.starts_with("diff ")
+                || line.starts_with("index ")
+                || line.starts_with("---")
+                || line.starts_with("+++")
+            {
+                Style::default().fg(Color::DarkGray)
+            } else {
+                Style::default().fg(Color::White)
+            };
+            StyledLine {
+                spans: vec![(style, line.to_string())],
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -88,6 +88,8 @@ pub enum Action {
     AiScrollUp,
     AiScrollDown,
     ResetAiSession,
+    /// Toggle between normal preview and git diff view (`d`).
+    ToggleGitDiff,
     // Command palette (Ctrl+K)
     OpenCommandPalette,
     CommandPaletteChar(char),
@@ -178,6 +180,7 @@ pub fn map_key_to_action(
             KeyCode::Char('g') | KeyCode::Char('G') => Action::OpenGitMenu,
             KeyCode::Char('c') => Action::CopyRelPath,
             KeyCode::Char('C') => Action::CopyAbsPath,
+            KeyCode::Char('d') => Action::ToggleGitDiff,
             KeyCode::Char('o') => Action::OpenWithSystem,
             KeyCode::Char('n') => Action::OpenNewFile,
             KeyCode::Char('N') => Action::OpenNewFileFromClipboard,
