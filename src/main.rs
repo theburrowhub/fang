@@ -1277,9 +1277,11 @@ async fn main() -> Result<()> {
     let initial_dir = {
         let raw = initial_dir_opt
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-        // Canonicalize so root_dir is always absolute. Relative paths like "." would
-        // compare incorrectly against the absolute entry paths that come from readdir.
-        std::fs::canonicalize(&raw).unwrap_or(raw)
+        // Make the path absolute without resolving symlinks.
+        // canonicalize() resolves symlinks (e.g. /Users -> /private/Users on macOS),
+        // which would make root_dir inconsistent with the paths returned by readdir,
+        // breaking starts_with() comparisons and blocking all upward navigation.
+        std::path::absolute(&raw).unwrap_or(raw)
     };
 
     tracing::info!("Fang starting in {:?}", initial_dir);
