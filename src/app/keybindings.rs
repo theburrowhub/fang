@@ -65,6 +65,7 @@ pub fn all_bindings() -> Vec<KeyBinding> {
         // ── Normal mode — panels ──────────────────────────────────────────
         KeyBinding::help_only("Normal", "p", "Toggle preview"),
         // ── Normal mode — features ────────────────────────────────────────
+        KeyBinding::footer("Normal", "Ctrl+K", "Command palette", "Palette"),
         KeyBinding::footer("Normal", "/", "Fuzzy search", "Search"),
         KeyBinding::footer("Normal", ":", "Run shell command", "Run"),
         KeyBinding::footer("Normal", ";", "Open in terminal split", "Split"),

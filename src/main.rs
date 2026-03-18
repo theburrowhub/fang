@@ -1079,6 +1079,59 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
             state.ai_scroll = usize::MAX;
             state.status_message = Some("AI session cleared".to_string());
         }
+        // ── Command palette ───────────────────────────────────────────────────
+        Action::OpenCommandPalette => {
+            state.mode = app::state::AppMode::CommandPalette {
+                query: String::new(),
+                selected: 0,
+            };
+        }
+        Action::CommandPaletteChar(c) => {
+            if let app::state::AppMode::CommandPalette { query, selected } = &mut state.mode {
+                query.push(*c);
+                *selected = 0; // reset selection on new input
+            }
+        }
+        Action::CommandPaletteBackspace => {
+            if let app::state::AppMode::CommandPalette { query, selected } = &mut state.mode {
+                query.pop();
+                *selected = 0;
+            }
+        }
+        Action::CommandPaletteNavDown => {
+            if let app::state::AppMode::CommandPalette { query, selected } = &mut state.mode {
+                let count = app::palette::filtered_items(query).len();
+                if *selected + 1 < count {
+                    *selected += 1;
+                }
+            }
+        }
+        Action::CommandPaletteNavUp => {
+            if let app::state::AppMode::CommandPalette { query, selected } = &mut state.mode {
+                if *selected > 0 {
+                    *selected -= 1;
+                }
+            }
+        }
+        Action::CloseCommandPalette => {
+            state.mode = app::state::AppMode::Normal;
+        }
+        Action::RunCommandPaletteItem => {
+            // Extract the selected action before changing mode.
+            let chosen =
+                if let app::state::AppMode::CommandPalette { query, selected } = &state.mode {
+                    app::palette::filtered_items(query)
+                        .into_iter()
+                        .nth(*selected)
+                        .map(|item| item.action)
+                } else {
+                    None
+                };
+            state.mode = app::state::AppMode::Normal;
+            if let Some(action) = chosen {
+                handle_action(&action, state, tx);
+            }
+        }
         Action::Noop => {}
     }
 }

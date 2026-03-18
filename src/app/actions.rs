@@ -88,6 +88,14 @@ pub enum Action {
     AiScrollUp,
     AiScrollDown,
     ResetAiSession,
+    // Command palette (Ctrl+K)
+    OpenCommandPalette,
+    CommandPaletteChar(char),
+    CommandPaletteBackspace,
+    CommandPaletteNavUp,
+    CommandPaletteNavDown,
+    RunCommandPaletteItem,
+    CloseCommandPalette,
     Noop,
 }
 
@@ -122,6 +130,9 @@ pub fn map_key_to_action(
             KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 Action::ResetAiSession
             }
+            KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                Action::OpenCommandPalette
+            }
             _ => Action::Noop,
         },
         AppMode::Normal => match key.code {
@@ -154,6 +165,9 @@ pub fn map_key_to_action(
             KeyCode::PageDown => Action::PreviewScrollDown,
             KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 Action::ResetAiSession
+            }
+            KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                Action::OpenCommandPalette
             }
             KeyCode::Char(':') => Action::OpenCommandInput,
             KeyCode::Char(';') => Action::OpenExternalCommand,
@@ -265,6 +279,16 @@ pub fn map_key_to_action(
             KeyCode::Down | KeyCode::Char('j') => Action::AiProviderNavDown,
             KeyCode::Up | KeyCode::Char('k') => Action::AiProviderNavUp,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
+            _ => Action::Noop,
+        },
+        AppMode::CommandPalette { .. } => match key.code {
+            KeyCode::Esc => Action::CloseCommandPalette,
+            KeyCode::Enter => Action::RunCommandPaletteItem,
+            KeyCode::Backspace => Action::CommandPaletteBackspace,
+            KeyCode::Down | KeyCode::Char('j') => Action::CommandPaletteNavDown,
+            KeyCode::Up | KeyCode::Char('k') => Action::CommandPaletteNavUp,
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
+            KeyCode::Char(c) => Action::CommandPaletteChar(c),
             _ => Action::Noop,
         },
     }

@@ -155,5 +155,6 @@ fn mode_str(mode: &AppMode) -> &'static str {
         AppMode::Help { .. } => "Help",
         AppMode::AiPrompt { .. } => "AiPrompt",
         AppMode::AiProviderSelect { .. } => "AiProvider",
+        AppMode::CommandPalette { .. } => "CommandPalette",
     }
 }
