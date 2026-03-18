@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.8.0] — 2026-03-18
+
+### Features
+
+- Command palette popup (Ctrl+K) (#35) ([ea67bc0](https://github.com/theburrowhub/fang/commit/ea67bc0f8907661abdfbee757e9ac8bfe9b14e37))
+
+
 ## [0.7.5] — 2026-03-18
 
 ### Bug Fixes
