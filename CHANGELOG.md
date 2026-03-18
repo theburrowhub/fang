@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.7.5] — 2026-03-18
+
+### Bug Fixes
+
+- Navigation unblocked from preview and AI panel focus (#34) ([ff15419](https://github.com/theburrowhub/fang/commit/ff15419dd110b662f1c194513dee1fe370d1f253))
+
+
 ## [0.7.4] — 2026-03-16
 
 ### Bug Fixes
