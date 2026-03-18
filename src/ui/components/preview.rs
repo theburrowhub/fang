@@ -251,6 +251,24 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             frame.render_widget(Paragraph::new(lines), inner);
         }
 
+        PreviewState::GitDiff { lines } => {
+            let inner = render_block(frame, area, border_style, " Diff [d] preview ".to_owned());
+
+            let inner_height = inner.height as usize;
+            let inner_width = inner.width as usize;
+            let max_scroll = lines.len().saturating_sub(inner_height);
+            let scroll = state.preview_scroll.min(max_scroll);
+
+            let display: Vec<Line<'static>> = lines
+                .iter()
+                .skip(scroll)
+                .take(inner_height)
+                .map(|sl| styled_line_to_line_padded(sl, inner_width))
+                .collect();
+
+            frame.render_widget(Paragraph::new(display), inner);
+        }
+
         PreviewState::TooLarge { size } => {
             let inner = render_block(frame, area, border_style, " Preview ".to_owned());
 

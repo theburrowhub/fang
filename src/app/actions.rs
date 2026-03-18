@@ -88,6 +88,8 @@ pub enum Action {
     AiScrollUp,
     AiScrollDown,
     ResetAiSession,
+    /// Toggle between normal preview and git diff view (`d`).
+    ToggleGitDiff,
     // Command palette (Ctrl+K)
     OpenCommandPalette,
     CommandPaletteChar(char),
@@ -141,12 +143,24 @@ pub fn map_key_to_action(
             KeyCode::Char('q') | KeyCode::Char('Q') => Action::Quit,
             // Esc / Ctrl+C cancel an in-flight make target (no-op when make is idle).
             KeyCode::Esc => Action::CancelMake,
-            // When preview panel has focus, j/k/arrows scroll the content.
+            // When preview panel has focus: vertical arrows scroll, navigation blocked.
             KeyCode::Char('j') | KeyCode::Down if *focused_panel == FocusedPanel::Preview => {
                 Action::PreviewScrollDown
             }
             KeyCode::Char('k') | KeyCode::Up if *focused_panel == FocusedPanel::Preview => {
                 Action::PreviewScrollUp
+            }
+            // Block directory navigation keys when preview has focus — they must not
+            // change the directory just because the user is scrolling the preview.
+            KeyCode::Char('u') | KeyCode::Left | KeyCode::Backspace
+                if *focused_panel == FocusedPanel::Preview =>
+            {
+                Action::Noop
+            }
+            KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter
+                if *focused_panel == FocusedPanel::Preview =>
+            {
+                Action::Noop
             }
             // Guarded arms (with modifier checks) must come BEFORE the unguarded
             // Char arms, or the unguarded arm shadows them.
@@ -178,6 +192,7 @@ pub fn map_key_to_action(
             KeyCode::Char('g') | KeyCode::Char('G') => Action::OpenGitMenu,
             KeyCode::Char('c') => Action::CopyRelPath,
             KeyCode::Char('C') => Action::CopyAbsPath,
+            KeyCode::Char('d') => Action::ToggleGitDiff,
             KeyCode::Char('o') => Action::OpenWithSystem,
             KeyCode::Char('n') => Action::OpenNewFile,
             KeyCode::Char('N') => Action::OpenNewFileFromClipboard,

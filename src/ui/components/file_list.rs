@@ -38,15 +38,48 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         .and_then(|n| n.to_str())
         .unwrap_or("/");
 
+    // Count git changes for the title summary
+    let (n_modified, n_added, n_other) = {
+        use crate::app::state::GitFileStatus;
+        let mut m = 0usize;
+        let mut a = 0usize;
+        let mut o = 0usize;
+        for s in state.git_file_status.values() {
+            match s {
+                GitFileStatus::Modified => m += 1,
+                GitFileStatus::Added | GitFileStatus::Untracked => a += 1,
+                _ => o += 1,
+            }
+        }
+        (m, a, o)
+    };
+
+    let git_summary = if n_modified + n_added + n_other > 0 {
+        let mut parts = Vec::new();
+        if n_modified > 0 {
+            parts.push(format!("~{}", n_modified));
+        }
+        if n_added > 0 {
+            parts.push(format!("+{}", n_added));
+        }
+        if n_other > 0 {
+            parts.push(format!("!{}", n_other));
+        }
+        format!(" [{}]", parts.join(" "))
+    } else {
+        String::new()
+    };
+
     let title = if !state.search_query.is_empty() {
         format!(
-            " {} [{}/{}] ",
+            " {}{} [{}/{}] ",
             dir_name,
+            git_summary,
             state.filtered_indices.len(),
             state.entries.len()
         )
     } else {
-        format!(" {} ({}) ", dir_name, state.entries.len())
+        format!(" {}{} ({}) ", dir_name, git_summary, state.entries.len())
     };
 
     let block = Block::default()
@@ -87,16 +120,25 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             // Pad name to name_width for alignment
             let padded_name = format!("{:<width$}", name, width = name_width);
 
-            // Git status indicator (1 char + space), blank when clean
+            // Git status indicator (1 char + space), blank when clean.
+            // Also apply the git colour to the filename so changes are
+            // immediately visible without scanning the indicator column.
             let (git_char, git_style) = state
                 .git_file_status
                 .get(&entry.path)
                 .map(|s| (s.indicator(), s.style()))
                 .unwrap_or((' ', Style::default()));
 
+            // Directories keep their blue colour; files adopt the git colour.
+            let name_style = if git_char != ' ' && !entry.is_dir {
+                git_style
+            } else {
+                style
+            };
+
             let line = Line::from(vec![
                 Span::styled(icon, style),
-                Span::styled(padded_name, style),
+                Span::styled(padded_name, name_style),
                 Span::styled(format!("{} ", git_char), git_style),
                 Span::styled(
                     format!("{:>5}", size_str),

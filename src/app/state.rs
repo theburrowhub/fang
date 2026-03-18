@@ -76,6 +76,10 @@ pub enum PreviewState {
     TooLarge {
         size: u64,
     },
+    /// Git diff of the selected file (activated with `d`).
+    GitDiff {
+        lines: Vec<StyledLine>,
+    },
     Error(String),
 }
 
@@ -252,6 +256,8 @@ pub struct AppState {
 
     // Layout toggles
     pub preview_visible: bool,
+    /// When true the preview panel shows the git diff instead of file content.
+    pub preview_git_diff: bool,
 
     // Status bar
     pub status_message: Option<String>,
@@ -320,6 +326,7 @@ impl AppState {
             make_output: vec![],
             make_cancel_tx: None,
             preview_visible: true,
+            preview_git_diff: false,
             status_message: None,
             header_info: HeaderInfo::default(),
             should_quit: false,

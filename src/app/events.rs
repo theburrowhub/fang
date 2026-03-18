@@ -31,6 +31,8 @@ pub enum Event {
     GitDone { exit_code: i32 },
     /// Git file-status map refreshed (absolute path → status)
     GitStatusReady(std::collections::HashMap<std::path::PathBuf, crate::app::state::GitFileStatus>),
+    /// Git diff of the selected file, ready to display
+    GitDiffReady(Vec<crate::app::state::StyledLine>),
     /// Streaming text fragment from an AI response
     AiOutputLine(String),
     /// AI response completed
