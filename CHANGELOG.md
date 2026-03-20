@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.9.1] — 2026-03-20
+
+### Bug Fixes
+
+- Dev env badges persist when navigating into subdirectories (#37) ([3d6b72a](https://github.com/theburrowhub/fang/commit/3d6b72a9e5f5094e01f5eff77637d67a22e9fe40))
+
+
 ## [0.9.0] — 2026-03-18
 
 ### Features
