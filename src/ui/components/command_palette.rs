@@ -112,15 +112,70 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     hint_spans.extend(key_hint("Esc", "Close"));
     frame.render_widget(Paragraph::new(Line::from(hint_spans)), hints_area);
 
-    // ── Empty state ───────────────────────────────────────────────────────────
+    // ── Shell fallback: no action matches → offer run / split ─────────────────
     if items.is_empty() {
-        let msg = Paragraph::new(Span::styled(
-            "  No matching commands",
+        if query.is_empty() {
+            // Nothing typed yet — list is empty, show placeholder
+            let msg = Paragraph::new(Span::styled(
+                "  Type to filter commands…",
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::ITALIC),
+            ));
+            frame.render_widget(msg, list_area);
+            return;
+        }
+
+        // Fallback rows: run in shell (:) or open in split (;)
+        let hint_col_width = 10usize;
+        let label_width = (inner.width as usize).saturating_sub(hint_col_width + 4);
+
+        let fallbacks = [
+            (format!("Run in shell:  {}", query), ":", 0usize),
+            (format!("Open in split: {}", query), ";", 1usize),
+        ];
+
+        let fallback_items: Vec<ListItem> = fallbacks
+            .iter()
+            .map(|(label, hint, idx)| {
+                let is_sel = *idx == selected;
+                let label_style = if is_sel {
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD)
+                        .bg(Color::DarkGray)
+                } else {
+                    Style::default().fg(Color::Yellow)
+                };
+                let hint_style = if is_sel {
+                    Style::default().fg(Color::Cyan).bg(Color::DarkGray)
+                } else {
+                    Style::default().fg(Color::DarkGray)
+                };
+                let truncated: String = if label.len() > label_width {
+                    format!("{}…", &label[..label_width.saturating_sub(1)])
+                } else {
+                    label.clone()
+                };
+                let padding = label_width.saturating_sub(truncated.len());
+                ListItem::new(Line::from(vec![
+                    Span::styled(if is_sel { " ▶ " } else { "   " }, label_style),
+                    Span::styled(truncated, label_style),
+                    Span::styled(" ".repeat(padding + 1), label_style),
+                    Span::styled(hint.to_string(), hint_style),
+                    Span::styled(" ", label_style),
+                ]))
+            })
+            .collect();
+
+        let mut list_state = ListState::default();
+        list_state.select(Some(selected));
+        let list = List::new(fallback_items).highlight_style(
             Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::ITALIC),
-        ));
-        frame.render_widget(msg, list_area);
+                .bg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        );
+        frame.render_stateful_widget(list, list_area, &mut list_state);
         return;
     }
 

@@ -1140,7 +1140,7 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
         }
         Action::CommandPaletteNavDown => {
             if let app::state::AppMode::CommandPalette { query, selected } = &mut state.mode {
-                let count = app::palette::filtered_items(query).len();
+                let count = app::palette::item_count(query);
                 if *selected + 1 < count {
                     *selected += 1;
                 }
@@ -1157,19 +1157,28 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
             state.mode = app::state::AppMode::Normal;
         }
         Action::RunCommandPaletteItem => {
-            // Extract the selected action before changing mode.
-            let chosen =
+            let result =
                 if let app::state::AppMode::CommandPalette { query, selected } = &state.mode {
-                    app::palette::filtered_items(query)
-                        .into_iter()
-                        .nth(*selected)
-                        .map(|item| item.action)
+                    app::palette::resolve_selection(query, *selected)
                 } else {
                     None
                 };
             state.mode = app::state::AppMode::Normal;
-            if let Some(action) = chosen {
-                handle_action(&action, state, tx);
+            match result {
+                Some(app::palette::PaletteResult::Action(action)) => {
+                    handle_action(&action, state, tx);
+                }
+                Some(app::palette::PaletteResult::RunShell(cmd)) => {
+                    // Execute as a `:` shell command, directly without re-prompting.
+                    state.mode = app::state::AppMode::CommandInput { cmd };
+                    handle_action(&Action::RunCommand, state, tx);
+                }
+                Some(app::palette::PaletteResult::OpenSplit(cmd)) => {
+                    // Execute as a `;` split command, directly without re-prompting.
+                    state.mode = app::state::AppMode::ExternalCommand { cmd };
+                    handle_action(&Action::RunExternalCommand, state, tx);
+                }
+                None => {}
             }
         }
         Action::Noop => {}
