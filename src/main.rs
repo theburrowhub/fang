@@ -92,17 +92,27 @@ fn schedule_preview_or_diff(state: &AppState, tx: &UnboundedSender<Event>) {
 
 /// Collects git branch and dev environment info for the given directory.
 /// Runs dev env probes concurrently via tokio::join! and sends HeaderInfoReady when done.
-fn schedule_header_info_load(dir: &std::path::Path, tx: &UnboundedSender<Event>) {
-    let dir = dir.to_path_buf();
+///
+/// `git_dir`  — used for git branch detection (the currently-navigated directory).
+/// `env_dir`  — used for dev environment detection (always the root directory where
+///              fang was opened, so env badges persist when navigating into subdirs).
+fn schedule_header_info_load(
+    git_dir: &std::path::Path,
+    env_dir: &std::path::Path,
+    tx: &UnboundedSender<Event>,
+) {
+    let git_dir = git_dir.to_path_buf();
+    let env_dir = env_dir.to_path_buf();
     let tx = tx.clone();
     tokio::spawn(async move {
+        let dir = env_dir; // env probes always use the root dir
         let mut info = app::state::HeaderInfo::default();
 
         // Git branch — sequential: SHA lookup only needed on detached HEAD
         if let Ok(output) = tokio::process::Command::new("git")
             .args([
                 "-C",
-                dir.to_str().unwrap_or("."),
+                git_dir.to_str().unwrap_or("."),
                 "rev-parse",
                 "--abbrev-ref",
                 "HEAD",
@@ -119,7 +129,7 @@ fn schedule_header_info_load(dir: &std::path::Path, tx: &UnboundedSender<Event>)
                     if let Ok(sha_out) = tokio::process::Command::new("git")
                         .args([
                             "-C",
-                            dir.to_str().unwrap_or("."),
+                            git_dir.to_str().unwrap_or("."),
                             "rev-parse",
                             "--short",
                             "HEAD",
@@ -280,7 +290,9 @@ fn navigate_to_dir(state: &mut AppState, path: PathBuf, tx: &UnboundedSender<Eve
     state.preview_scroll = 0;
     state.needs_terminal_clear = true;
     schedule_directory_load(path.clone(), tx);
-    schedule_header_info_load(&path, tx);
+    // git_dir = new path (branch may differ in monorepos)
+    // env_dir = root_dir (env badges always come from where fang was opened)
+    schedule_header_info_load(&path, &state.root_dir, tx);
     commands::title::set_window_title(&path);
     schedule_git_status_load(&state.current_dir, tx);
 }
@@ -1392,7 +1404,8 @@ async fn main() -> Result<()> {
     state.preview_state = app::state::PreviewState::Loading;
 
     // Load header info (git branch + dev envs) for initial directory
-    schedule_header_info_load(&initial_dir, &tx);
+    // Both git_dir and env_dir are the same on startup.
+    schedule_header_info_load(&initial_dir, &initial_dir, &tx);
 
     // Set initial window title
     commands::title::set_window_title(&initial_dir);
