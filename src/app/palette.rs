@@ -12,6 +12,16 @@ pub struct PaletteItem {
     pub action: Action,
 }
 
+/// What happens when the user confirms a palette selection.
+pub enum PaletteResult {
+    /// Dispatch an existing fang action.
+    Action(Action),
+    /// Run `cmd` as a shell command (equivalent to `:cmd` + Enter).
+    RunShell(String),
+    /// Open `cmd` in a terminal split (equivalent to `;cmd` + Enter).
+    OpenSplit(String),
+}
+
 /// Returns the full list of palette items, in display order.
 pub fn all_palette_items() -> Vec<PaletteItem> {
     vec![
@@ -91,6 +101,11 @@ pub fn all_palette_items() -> Vec<PaletteItem> {
             action: Action::TogglePreview,
         },
         PaletteItem {
+            label: "Toggle Git Diff",
+            hint: "d",
+            action: Action::ToggleGitDiff,
+        },
+        PaletteItem {
             label: "Settings",
             hint: "Ctrl+S",
             action: Action::OpenSettings,
@@ -120,4 +135,43 @@ pub fn filtered_items(query: &str) -> Vec<PaletteItem> {
         .into_iter()
         .filter(|item| q.is_empty() || item.label.to_lowercase().contains(&q))
         .collect()
+}
+
+/// Total number of selectable rows given a query.
+///
+/// If there are matching actions, that count is returned.
+/// If there are no matches but the query is non-empty, two fallback rows are
+/// shown ("Run in shell" and "Open in split"), so the count is 2.
+pub fn item_count(query: &str) -> usize {
+    let n = filtered_items(query).len();
+    if n > 0 {
+        n
+    } else if !query.is_empty() {
+        2
+    } else {
+        0
+    }
+}
+
+/// Resolve the selected row into a `PaletteResult`.
+///
+/// When there are matching action items the selection indexes into them.
+/// When there are no matches (but the query is non-empty) the two shell
+/// fallback rows are available: index 0 = run, index 1 = split.
+pub fn resolve_selection(query: &str, selected: usize) -> Option<PaletteResult> {
+    let items = filtered_items(query);
+    if !items.is_empty() {
+        items
+            .into_iter()
+            .nth(selected)
+            .map(|i| PaletteResult::Action(i.action))
+    } else if !query.is_empty() {
+        match selected {
+            0 => Some(PaletteResult::RunShell(query.to_string())),
+            1 => Some(PaletteResult::OpenSplit(query.to_string())),
+            _ => None,
+        }
+    } else {
+        None
+    }
 }
