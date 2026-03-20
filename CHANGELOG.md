@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.10.0] — 2026-03-20
+
+### Features
+
+- Palette shell fallback + simplified footer (#38) ([651a9c5](https://github.com/theburrowhub/fang/commit/651a9c5649a1dfdb228cfdb76338b471cf8bcb98))
+
+
 ## [0.9.1] — 2026-03-20
 
 ### Bug Fixes
