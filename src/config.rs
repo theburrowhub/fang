@@ -48,12 +48,23 @@ fn default_true() -> bool {
     true
 }
 
+// ── MSLP (skip permissions) ──────────────────────────────────────────────────
+
+/// When enabled, the Claude Code CLI is invoked with `--dangerously-skip-permissions`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MslpConfig {
+    #[serde(default)]
+    pub enabled: bool,
+}
+
 // ── Top-level config file ─────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
     pub layout: LayoutConfig,
+    #[serde(default)]
+    pub mslp: MslpConfig,
 }
 
 // ── Persistence ───────────────────────────────────────────────────────────────
@@ -170,6 +181,13 @@ pub fn entries_from_config(cfg: &Config) -> Vec<SettingEntry> {
             value: if cfg.layout.preview_visible { 1 } else { 0 },
             kind: EntryKind::Toggle,
         },
+        // ── MSLP (Claude CLI skip permissions) ──────────────────────────
+        SettingEntry {
+            key: "mslp.enabled",
+            description: "Skip Claude permissions (dangerous)",
+            value: if cfg.mslp.enabled { 1 } else { 0 },
+            kind: EntryKind::Toggle,
+        },
     ]
 }
 
@@ -178,6 +196,7 @@ pub fn apply_entries(cfg: &mut Config, entries: &[SettingEntry]) {
         match e.key {
             "layout.file_list_pct" => cfg.layout.file_list_pct = e.value,
             "layout.preview_visible" => cfg.layout.preview_visible = e.as_bool(),
+            "mslp.enabled" => cfg.mslp.enabled = e.as_bool(),
             _ => {}
         }
     }

@@ -115,17 +115,22 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         panel_border_style(false)
     };
 
-    let title = if state.ai_streaming {
-        " AI (streaming...) "
-    } else if state.ai_conversation.is_empty() {
-        " AI "
+    let mslp_tag = if state.mslp_enabled {
+        " ⚠ skip-perms"
     } else {
-        " AI Chat "
+        ""
+    };
+    let title = if state.ai_streaming {
+        format!(" AI (streaming...){} ", mslp_tag)
+    } else if state.ai_conversation.is_empty() {
+        format!(" AI{} ", mslp_tag)
+    } else {
+        format!(" AI Chat{} ", mslp_tag)
     };
 
     let block = Block::default()
         .title(Span::styled(
-            title,
+            title.clone(),
             Style::default()
                 .fg(Color::Magenta)
                 .add_modifier(Modifier::BOLD),

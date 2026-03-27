@@ -357,18 +357,22 @@ pub async fn run_ai_prompt(
     config: &AiProviderConfig,
     user_prompt: &str,
     context: &str,
+    mslp: bool,
     tx: UnboundedSender<Event>,
 ) {
     tracing::info!(
-        "AI prompt: provider={}, model={}, prompt_len={}, context_len={}",
+        "AI prompt: provider={}, model={}, prompt_len={}, context_len={}, mslp={}",
         config.provider_type,
         config.model,
         user_prompt.len(),
-        context.len()
+        context.len(),
+        mslp,
     );
 
     let result = match config.provider_type {
-        AiProviderType::ClaudeCli => run_claude_cli(&config.model, user_prompt, context, &tx).await,
+        AiProviderType::ClaudeCli => {
+            run_claude_cli(&config.model, user_prompt, context, mslp, &tx).await
+        }
         AiProviderType::Ollama => {
             run_ollama(&config.endpoint, &config.model, user_prompt, context, &tx).await
         }
@@ -398,6 +402,7 @@ async fn run_claude_cli(
     _model: &str,
     user_prompt: &str,
     context: &str,
+    mslp: bool,
     tx: &UnboundedSender<Event>,
 ) -> Result<(), String> {
     use tokio::io::{AsyncBufReadExt, BufReader};
@@ -405,12 +410,19 @@ async fn run_claude_cli(
     let full_prompt = format!("{}\n\nUser request: {}", context, user_prompt);
 
     tracing::debug!(
-        "Spawning claude CLI with prompt length {}",
-        full_prompt.len()
+        "Spawning claude CLI with prompt length {}, mslp={}",
+        full_prompt.len(),
+        mslp,
     );
 
+    let mut args = vec!["-p", "--output-format", "text"];
+    if mslp {
+        args.push("--dangerously-skip-permissions");
+    }
+    args.push(&full_prompt);
+
     let mut child = tokio::process::Command::new("claude")
-        .args(["-p", "--output-format", "text", &full_prompt])
+        .args(&args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
