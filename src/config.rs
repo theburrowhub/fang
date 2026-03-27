@@ -51,16 +51,10 @@ fn default_true() -> bool {
 // ── MSLP (skip permissions) ──────────────────────────────────────────────────
 
 /// When enabled, the Claude Code CLI is invoked with `--dangerously-skip-permissions`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MslpConfig {
     #[serde(default)]
     pub enabled: bool,
-}
-
-impl Default for MslpConfig {
-    fn default() -> Self {
-        Self { enabled: false }
-    }
 }
 
 // ── Top-level config file ─────────────────────────────────────────────────────
