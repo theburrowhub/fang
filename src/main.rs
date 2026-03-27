@@ -1345,6 +1345,8 @@ fn handle_event(event: Event, state: &mut AppState, tx: &UnboundedSender<Event>)
                 state.mode = app::state::AppMode::Normal;
             }
         }
+        // FileSystemChanged is intercepted in the main loop before reaching here.
+        Event::FileSystemChanged => {}
     }
 }
 
@@ -1429,6 +1431,50 @@ async fn main() -> Result<()> {
         }
     }
 
+    // ── Filesystem watcher ────────────────────────────────────────────────────
+    // Watches the current directory (non-recursive) for file-list changes, and
+    // watches .git/index + .git/HEAD (from root_dir) for git-status changes.
+    // The callback is called from a background thread managed by `notify`, so
+    // UnboundedSender::send — which is thread-safe — bridges into the tokio loop.
+    let fs_tx = tx.clone();
+    let mut fs_watcher: Option<notify::RecommendedWatcher> = {
+        use notify::Watcher;
+        let result = notify::RecommendedWatcher::new(
+            move |res: notify::Result<notify::Event>| {
+                if res.is_ok() {
+                    let _ = fs_tx.send(Event::FileSystemChanged);
+                }
+            },
+            notify::Config::default(),
+        );
+        match result {
+            Ok(mut w) => {
+                w.watch(&initial_dir, notify::RecursiveMode::NonRecursive)
+                    .ok();
+                // Also watch git metadata files so staging/commits update instantly.
+                let git_index = state.root_dir.join(".git/index");
+                let git_head = state.root_dir.join(".git/HEAD");
+                if git_index.exists() {
+                    w.watch(&git_index, notify::RecursiveMode::NonRecursive)
+                        .ok();
+                }
+                if git_head.exists() {
+                    w.watch(&git_head, notify::RecursiveMode::NonRecursive).ok();
+                }
+                Some(w)
+            }
+            Err(e) => {
+                tracing::warn!("Could not start filesystem watcher: {}", e);
+                None
+            }
+        }
+    };
+    // Track which directory the watcher is currently watching so we can
+    // unwatch/re-watch when the user navigates.
+    let mut watcher_dir = initial_dir.clone();
+    // Debounce filesystem events: reload at most once every 200 ms.
+    let mut last_fs_reload: Option<std::time::Instant> = None;
+
     // Setup event sources
     let mut crossterm_events = EventStream::new();
     let mut tick_timer = interval(Duration::from_millis(250));
@@ -1457,11 +1503,35 @@ async fn main() -> Result<()> {
             break;
         }
 
+        // Keep the filesystem watcher in sync with the current directory.
+        if state.current_dir != watcher_dir {
+            if let Some(ref mut w) = fs_watcher {
+                use notify::Watcher;
+                w.unwatch(&watcher_dir).ok();
+                w.watch(&state.current_dir, notify::RecursiveMode::NonRecursive)
+                    .ok();
+            }
+            watcher_dir = state.current_dir.clone();
+        }
+
         // Wait for the next event from any source
         tokio::select! {
             // Internal events (preview ready, make output, directory loaded)
             Some(event) = rx.recv() => {
-                handle_event(event, &mut state, &tx);
+                // FileSystemChanged is handled here (debounce needs local state).
+                if let Event::FileSystemChanged = event {
+                    let now = std::time::Instant::now();
+                    let elapsed = last_fs_reload
+                        .map(|t| now.duration_since(t))
+                        .unwrap_or(std::time::Duration::from_secs(999));
+                    if elapsed >= std::time::Duration::from_millis(200) {
+                        last_fs_reload = Some(now);
+                        schedule_directory_load(state.current_dir.clone(), &tx);
+                        schedule_git_status_load(&state.current_dir, &tx);
+                    }
+                } else {
+                    handle_event(event, &mut state, &tx);
+                }
             }
 
             // Crossterm events (keyboard, resize, mouse)
