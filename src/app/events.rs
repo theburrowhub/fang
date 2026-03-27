@@ -39,4 +39,7 @@ pub enum Event {
     AiDone,
     /// AI providers detected (from background detection task)
     AiProvidersDetected(Vec<crate::commands::ai::AiProvider>),
+    /// The current directory or git index changed on disk (from the filesystem watcher).
+    /// Triggers a debounced reload of the directory listing and git status.
+    FileSystemChanged,
 }

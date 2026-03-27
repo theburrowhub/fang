@@ -22,9 +22,13 @@ fn styled_line_to_line_padded(sl: &StyledLine, width: usize) -> Line<'static> {
         if remaining == 0 {
             break;
         }
+        // Expand tabs to 4 spaces so char count matches terminal display width.
+        // Without this, each '\t' counts as 1 char but the terminal renders it
+        // as up to 8 columns, causing lines to overflow the panel boundary.
+        let text = text.replace('\t', "    ");
         let chars: Vec<char> = text.chars().collect();
         if chars.len() <= remaining {
-            result.push(Span::styled(text.clone(), *style));
+            result.push(Span::styled(text, *style));
             remaining -= chars.len();
         } else {
             // Clip this span at the panel boundary
@@ -232,6 +236,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                 .preview_scroll
                 .min(output.len().saturating_sub(inner_height));
 
+            let inner_width = inner.width as usize;
             let lines: Vec<Line<'static>> = output
                 .iter()
                 .skip(scroll)
@@ -244,7 +249,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                     } else {
                         Style::default().fg(Color::White)
                     };
-                    Line::from(Span::styled(s.clone(), style))
+                    // Expand tabs and clip to panel width
+                    let expanded = s.replace('\t', "    ");
+                    let clipped: String = expanded.chars().take(inner_width).collect();
+                    Line::from(Span::styled(clipped, style))
                 })
                 .collect();
 
