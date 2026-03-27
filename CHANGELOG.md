@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.12.0] — 2026-03-27
+
+### Features
+
+- Add --mslp flag for Claude CLI skip permissions (#40) ([3575133](https://github.com/theburrowhub/fang/commit/35751330442d4c778c554a6db825d1036c168c65))
+
+
 ## [0.11.0] — 2026-03-27
 
 ### Features
