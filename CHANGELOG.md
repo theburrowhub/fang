@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.11.0] — 2026-03-27
+
+### Features
+
+- Real-time filesystem and git status updates via notify watcher (#39) ([d51f4d0](https://github.com/theburrowhub/fang/commit/d51f4d0372f43bd6b9ea3df7f88fbf2095c9f04d))
+
+
 ## [0.10.0] — 2026-03-20
 
 ### Features
