@@ -288,7 +288,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
 
             let inner_width = inner.width as usize;
             // Each image occupies this many terminal rows in the layout
-            let image_rows = (inner.height as usize / 3).max(4).min(24);
+            let image_rows = (inner.height as usize / 3).clamp(4, 24);
 
             // Total visual rows for scroll clamping
             let total_visual: usize = items
