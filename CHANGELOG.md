@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.13.0] — 2026-03-27
+
+### Features
+
+- Mermaid diagrams + embedded images in Markdown preview (#41) ([677c1ef](https://github.com/theburrowhub/fang/commit/677c1ef69c819c1a7d0fd530f37f78a86236ea3e))
+
+
 ## [0.12.0] — 2026-03-27
 
 ### Features
