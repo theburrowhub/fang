@@ -51,6 +51,49 @@ pub struct AiMessage {
     pub text: String,
 }
 
+// ─── Image protocol slot ──────────────────────────────────────────────────────
+
+/// Holds a ratatui-image protocol for one image in the preview.
+/// `None` until the image is first rendered (protocol is created lazily at render time).
+pub struct ImageProtocolSlot {
+    pub protocol: Option<ratatui_image::protocol::StatefulProtocol>,
+}
+
+impl std::fmt::Debug for ImageProtocolSlot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ImageProtocolSlot")
+    }
+}
+
+// ─── RichMarkdown ─────────────────────────────────────────────────────────────
+
+/// One block inside a rich-markdown preview (text or rendered image).
+#[derive(Clone)]
+pub enum MarkdownItem {
+    /// One or more styled text lines (paragraphs, headings, code, …).
+    Text(Vec<StyledLine>),
+    /// A rendered image block — PNG bytes ready for decoding.
+    /// Used for both Mermaid diagrams and regular `![alt](path)` images.
+    Image {
+        /// Raw PNG bytes produced by mermaid-rs-renderer → resvg, or read from disk.
+        png: Vec<u8>,
+        /// Alt text / diagram label shown as fallback.
+        alt: String,
+    },
+}
+
+// Manual Debug: DynamicImage/PNG bytes don't need to be printed.
+impl std::fmt::Debug for MarkdownItem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Text(lines) => write!(f, "Text({} lines)", lines.len()),
+            Self::Image { alt, png } => {
+                write!(f, "Image({} bytes, alt={:?})", png.len(), alt)
+            }
+        }
+    }
+}
+
 // ─── PreviewState ─────────────────────────────────────────────────────────────
 
 /// What is currently shown in the preview panel.
@@ -79,6 +122,12 @@ pub enum PreviewState {
     /// Git diff of the selected file (activated with `d`).
     GitDiff {
         lines: Vec<StyledLine>,
+    },
+    /// Rich Markdown: mix of text blocks and rendered images (Mermaid + embedded).
+    RichMarkdown {
+        items: Vec<MarkdownItem>,
+        /// Total source lines (for the title counter).
+        total_lines: usize,
     },
     Error(String),
 }
@@ -281,6 +330,15 @@ pub struct AppState {
     /// Map from absolute path → git status, refreshed on every directory navigation.
     pub git_file_status: std::collections::HashMap<std::path::PathBuf, GitFileStatus>,
 
+    // Image rendering (ratatui-image)
+    /// Terminal-image picker — detects protocol (Kitty, iTerm2, Sixel, half-block).
+    /// `None` if the terminal does not support any image protocol or init failed.
+    pub image_picker: Option<ratatui_image::picker::Picker>,
+    /// Per-image render state for the current `RichMarkdown` preview.
+    /// Index matches the `Image` variant position in `PreviewState::RichMarkdown::items`.
+    /// Wrapped in `RefCell` so the render function can mutate state through `&AppState`.
+    pub image_protocols: std::cell::RefCell<Vec<ImageProtocolSlot>>,
+
     // MSLP — pass --dangerously-skip-permissions to Claude CLI
     pub mslp_enabled: bool,
 
@@ -337,6 +395,8 @@ impl AppState {
             command_stdin: None,
             config: crate::config::Config::default(),
             git_file_status: std::collections::HashMap::new(),
+            image_picker: None,
+            image_protocols: std::cell::RefCell::new(vec![]),
             mslp_enabled: false,
             ai_provider: ai_config,
             ai_providers: vec![],
