@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.13.1] — 2026-03-27
+
+### Bug Fixes
+
+- Mermaid/image preview rendering improvements (#42) ([ad3ead8](https://github.com/theburrowhub/fang/commit/ad3ead8bf06ff9151e3e4262b293263a02a9c3d0))
+
+
 ## [0.13.0] — 2026-03-27
 
 ### Features
