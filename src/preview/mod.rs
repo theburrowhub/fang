@@ -54,7 +54,10 @@ pub async fn load_preview(entry: &FileEntry) -> PreviewState {
                     let total_lines = source.lines().count();
                     let base_dir = entry.path.parent();
                     // Parse markdown into intermediate items (text + image placeholders)
-                    let rich = markdown::render_markdown_rich(&source, 200, base_dir);
+                    // Use a narrower render width so tables fit visible panel widths.
+                    // The actual panel is usually 80-120 chars; 100 is a good compromise.
+                    const RENDER_WIDTH: u16 = 100;
+                    let rich = markdown::render_markdown_rich(&source, RENDER_WIDTH, base_dir);
                     // Render images async and build the final item list
                     let mut items: Vec<MarkdownItem> = Vec::new();
                     let mut has_images = false;
@@ -73,7 +76,7 @@ pub async fn load_preview(entry: &FileEntry) -> PreviewState {
                                     // Fallback: show source as code block
                                     let fallback = markdown::render_markdown(
                                         &format!("```mermaid\n{}\n```", src),
-                                        200,
+                                        RENDER_WIDTH,
                                     );
                                     items.push(MarkdownItem::Text(fallback));
                                 }

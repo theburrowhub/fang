@@ -287,8 +287,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             }
 
             let inner_width = inner.width as usize;
-            // Each image occupies this many terminal rows in the layout
-            let image_rows = (inner.height as usize / 3).clamp(4, 24);
+            let inner_height = inner.height as usize;
+            // Image height: ≤ 30% of panel height, clamped to [3, 12] rows.
+            let image_rows = (inner_height * 3 / 10).clamp(3, 12);
 
             // Total visual rows for scroll clamping
             let total_visual: usize = items
@@ -298,7 +299,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                     MarkdownItem::Image { .. } => image_rows,
                 })
                 .sum();
-            let max_scroll = total_visual.saturating_sub(inner.height as usize);
+            let max_scroll = total_visual.saturating_sub(inner_height);
             let scroll = state.preview_scroll.min(max_scroll);
 
             // Ensure the protocol cache has a slot for every Image item
@@ -319,25 +320,37 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             'items: for item in items {
                 match item {
                     MarkdownItem::Text(lines) => {
-                        for sl in lines {
-                            if row >= scroll + inner.height as usize {
-                                break 'items;
-                            }
-                            if row >= scroll {
-                                let y = inner.y + (row - scroll) as u16;
-                                let line_area = Rect {
-                                    x: inner.x,
-                                    y,
-                                    width: inner.width,
-                                    height: 1,
-                                };
-                                frame.render_widget(
-                                    Paragraph::new(styled_line_to_line_padded(sl, inner_width)),
-                                    line_area,
-                                );
-                            }
-                            row += 1;
+                        // Render the visible portion of this text block as a
+                        // single Paragraph — identical approach to PreviewState::Text.
+                        let block_end = row + lines.len();
+                        if block_end <= scroll {
+                            // Entire block is above the viewport — skip.
+                            row = block_end;
+                            continue;
                         }
+                        if row >= scroll + inner_height {
+                            break 'items;
+                        }
+                        let skip = scroll.saturating_sub(row);
+                        let take = inner_height.saturating_sub(row.saturating_sub(scroll));
+                        let y = inner.y + row.saturating_sub(scroll) as u16;
+                        let height = take.min(lines.len().saturating_sub(skip)) as u16;
+                        if height > 0 {
+                            let block_area = Rect {
+                                x: inner.x,
+                                y,
+                                width: inner.width,
+                                height,
+                            };
+                            let display: Vec<Line<'static>> = lines
+                                .iter()
+                                .skip(skip)
+                                .take(height as usize)
+                                .map(|sl| styled_line_to_line_padded(sl, inner_width))
+                                .collect();
+                            frame.render_widget(Paragraph::new(display), block_area);
+                        }
+                        row = block_end;
                     }
                     MarkdownItem::Image { png, alt } => {
                         let img_top = row;
