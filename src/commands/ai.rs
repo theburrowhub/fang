@@ -370,7 +370,9 @@ pub async fn run_ai_prompt(
     );
 
     let result = match config.provider_type {
-        AiProviderType::ClaudeCli => run_claude_cli(&config.model, user_prompt, context, mslp, &tx).await,
+        AiProviderType::ClaudeCli => {
+            run_claude_cli(&config.model, user_prompt, context, mslp, &tx).await
+        }
         AiProviderType::Ollama => {
             run_ollama(&config.endpoint, &config.model, user_prompt, context, &tx).await
         }

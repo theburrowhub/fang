@@ -115,7 +115,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         panel_border_style(false)
     };
 
-    let mslp_tag = if state.mslp_enabled { " ⚠ skip-perms" } else { "" };
+    let mslp_tag = if state.mslp_enabled {
+        " ⚠ skip-perms"
+    } else {
+        ""
+    };
     let title = if state.ai_streaming {
         format!(" AI (streaming...){} ", mslp_tag)
     } else if state.ai_conversation.is_empty() {

@@ -1025,7 +1025,8 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
                     let prompt_owned = prompt_text.clone();
                     let mslp = state.mslp_enabled;
                     let handle = tokio::spawn(async move {
-                        commands::ai::run_ai_prompt(&config, &prompt_owned, &context, mslp, tx2).await;
+                        commands::ai::run_ai_prompt(&config, &prompt_owned, &context, mslp, tx2)
+                            .await;
                     });
                     state.ai_task_handle = Some(handle.abort_handle());
                 } else {
