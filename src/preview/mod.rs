@@ -1,7 +1,8 @@
-use crate::app::state::{FileEntry, PreviewState};
+use crate::app::state::{FileEntry, MarkdownItem, PreviewState};
 use std::path::Path;
 
 pub mod binary;
+pub mod images;
 pub mod makefile;
 pub mod markdown;
 pub mod text;
@@ -51,8 +52,52 @@ pub async fn load_preview(entry: &FileEntry) -> PreviewState {
             if MARKDOWN_EXTENSIONS.contains(&ext.as_str()) {
                 if let Ok(source) = String::from_utf8(data) {
                     let total_lines = source.lines().count();
-                    // Use a fixed render width; the panel clips at actual width in the renderer
-                    let lines = markdown::render_markdown(&source, 200);
+                    let base_dir = entry.path.parent();
+                    // Parse markdown into intermediate items (text + image placeholders)
+                    let rich = markdown::render_markdown_rich(&source, 200, base_dir);
+                    // Render images async and build the final item list
+                    let mut items: Vec<MarkdownItem> = Vec::new();
+                    let mut has_images = false;
+                    for item in rich {
+                        match item {
+                            markdown::RichItem::Text(lines) => {
+                                items.push(MarkdownItem::Text(lines));
+                            }
+                            markdown::RichItem::Mermaid(src) => {
+                                has_images = true;
+                                let png = images::render_mermaid_to_png(&src);
+                                let alt = "Mermaid diagram".to_string();
+                                if let Some(png) = png {
+                                    items.push(MarkdownItem::Image { png, alt });
+                                } else {
+                                    // Fallback: show source as code block
+                                    let fallback = markdown::render_markdown(
+                                        &format!("```mermaid\n{}\n```", src),
+                                        200,
+                                    );
+                                    items.push(MarkdownItem::Text(fallback));
+                                }
+                            }
+                            markdown::RichItem::ImageFile { path, alt } => {
+                                has_images = true;
+                                if let Some(png) = images::load_image_to_png(&path) {
+                                    items.push(MarkdownItem::Image { png, alt });
+                                }
+                                // If loading fails, silently skip the image
+                            }
+                        }
+                    }
+                    if has_images {
+                        return PreviewState::RichMarkdown { items, total_lines };
+                    }
+                    // Pure text markdown — use the flat Text variant (cheaper rendering)
+                    let lines = items
+                        .into_iter()
+                        .flat_map(|i| match i {
+                            MarkdownItem::Text(l) => l,
+                            _ => vec![],
+                        })
+                        .collect();
                     return PreviewState::Text { lines, total_lines };
                 }
                 // If not valid UTF-8 fall through to normal text path
