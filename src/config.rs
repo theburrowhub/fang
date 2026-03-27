@@ -190,7 +190,7 @@ pub fn entries_from_config(cfg: &Config) -> Vec<SettingEntry> {
         // ── MSLP (Claude CLI skip permissions) ──────────────────────────
         SettingEntry {
             key: "mslp.enabled",
-            description: "Skip permissions for Claude CLI (--dangerously-skip-permissions)",
+            description: "Skip Claude permissions (dangerous)",
             value: if cfg.mslp.enabled { 1 } else { 0 },
             kind: EntryKind::Toggle,
         },

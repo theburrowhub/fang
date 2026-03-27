@@ -958,6 +958,7 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
             if let app::state::AppMode::Settings { entries, .. } = &state.mode {
                 let entries_clone = entries.clone();
                 config::apply_entries(&mut state.config, &entries_clone);
+                state.mslp_enabled = state.config.mslp.enabled;
                 let cfg = state.config.clone();
                 if let Err(e) = config::save(&cfg) {
                     state.status_message = Some(format!("Settings save error: {}", e));
@@ -1402,15 +1403,12 @@ async fn main() -> Result<()> {
 
     // Initialize state
     // Load persisted config (sync read before TUI starts — acceptable for startup)
-    let mut cfg = config::load();
-    // CLI --mslp flag overrides (and persists) the config value.
-    if cli_mslp {
-        cfg.mslp.enabled = true;
-    }
+    let cfg = config::load();
     let mut state = AppState::new(initial_dir.clone(), ai_config);
     // Apply persisted panel visibility — p toggles this in-session without saving.
     state.preview_visible = cfg.layout.preview_visible;
-    state.mslp_enabled = cfg.mslp.enabled;
+    // CLI --mslp is a session-only override — never written back to config.
+    state.mslp_enabled = cfg.mslp.enabled || cli_mslp;
     state.config = cfg;
 
     // Setup internal event channel (for async results from background tasks)
