@@ -1,4 +1,4 @@
-use crate::app::state::{FileEntry, MarkdownItem, PreviewState};
+use crate::app::state::{FileEntry, PreviewState, RenderedImage};
 use std::path::Path;
 
 pub mod binary;
@@ -53,51 +53,43 @@ pub async fn load_preview(entry: &FileEntry) -> PreviewState {
                 if let Ok(source) = String::from_utf8(data) {
                     let total_lines = source.lines().count();
                     let base_dir = entry.path.parent();
-                    // Parse markdown into intermediate items (text + image placeholders)
-                    let rich = markdown::render_markdown_rich(&source, 200, base_dir);
-                    // Render images async and build the final item list
-                    let mut items: Vec<MarkdownItem> = Vec::new();
+                    // Scan source for mermaid/image blocks only — text rendering is
+                    // deferred to draw time so it uses the actual panel width.
+                    let rich = markdown::render_markdown_rich(&source, 80, base_dir);
+                    let mut rendered_images: Vec<RenderedImage> = Vec::new();
                     let mut has_images = false;
                     for item in rich {
                         match item {
-                            markdown::RichItem::Text(lines) => {
-                                items.push(MarkdownItem::Text(lines));
-                            }
+                            markdown::RichItem::Text(_) => {}
                             markdown::RichItem::Mermaid(src) => {
                                 has_images = true;
-                                let png = images::render_mermaid_to_png(&src);
-                                let alt = "Mermaid diagram".to_string();
-                                if let Some(png) = png {
-                                    items.push(MarkdownItem::Image { png, alt });
-                                } else {
-                                    // Fallback: show source as code block
-                                    let fallback = markdown::render_markdown(
-                                        &format!("```mermaid\n{}\n```", src),
-                                        200,
-                                    );
-                                    items.push(MarkdownItem::Text(fallback));
+                                if let Some(png) = images::render_mermaid_to_png(&src) {
+                                    rendered_images.push(RenderedImage {
+                                        alt: "Mermaid diagram".to_string(),
+                                        png,
+                                    });
                                 }
+                                // Render failure → no slot added; draw code
+                                // detects mismatch and falls back to source text.
                             }
                             markdown::RichItem::ImageFile { path, alt } => {
                                 has_images = true;
                                 if let Some(png) = images::load_image_to_png(&path) {
-                                    items.push(MarkdownItem::Image { png, alt });
+                                    rendered_images.push(RenderedImage { alt, png });
                                 }
-                                // If loading fails, silently skip the image
                             }
                         }
                     }
                     if has_images {
-                        return PreviewState::RichMarkdown { items, total_lines };
+                        return PreviewState::RichMarkdown {
+                            source,
+                            base_dir: base_dir.map(|p| p.to_path_buf()),
+                            images: rendered_images,
+                            total_lines,
+                        };
                     }
-                    // Pure text markdown — use the flat Text variant (cheaper rendering)
-                    let lines = items
-                        .into_iter()
-                        .flat_map(|i| match i {
-                            MarkdownItem::Text(l) => l,
-                            _ => vec![],
-                        })
-                        .collect();
+                    // Pure text — render now (no images).
+                    let lines = markdown::render_markdown(&source, 200);
                     return PreviewState::Text { lines, total_lines };
                 }
                 // If not valid UTF-8 fall through to normal text path

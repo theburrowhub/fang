@@ -67,29 +67,45 @@ impl std::fmt::Debug for ImageProtocolSlot {
 
 // ─── RichMarkdown ─────────────────────────────────────────────────────────────
 
-/// One block inside a rich-markdown preview (text or rendered image).
-#[derive(Clone)]
-pub enum MarkdownItem {
-    /// One or more styled text lines (paragraphs, headings, code, …).
-    Text(Vec<StyledLine>),
-    /// A rendered image block — PNG bytes ready for decoding.
-    /// Used for both Mermaid diagrams and regular `![alt](path)` images.
-    Image {
-        /// Raw PNG bytes produced by mermaid-rs-renderer → resvg, or read from disk.
-        png: Vec<u8>,
-        /// Alt text / diagram label shown as fallback.
-        alt: String,
-    },
+/// A pre-rendered image embedded in a Markdown file.
+/// PNG bytes were produced async (mermaid-rs-renderer → resvg, or image::open).
+pub struct RenderedImage {
+    pub alt: String,
+    pub png: Vec<u8>,
 }
 
-// Manual Debug: DynamicImage/PNG bytes don't need to be printed.
+impl std::fmt::Debug for RenderedImage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "RenderedImage({} bytes, alt={:?})",
+            self.png.len(),
+            self.alt
+        )
+    }
+}
+
+impl Clone for RenderedImage {
+    fn clone(&self) -> Self {
+        Self {
+            alt: self.alt.clone(),
+            png: self.png.clone(),
+        }
+    }
+}
+
+/// One block in a rendered-at-draw-time Markdown preview.
+#[derive(Clone)]
+pub enum MarkdownItem {
+    Text(Vec<StyledLine>),
+    Image { png: Vec<u8>, alt: String },
+}
+
 impl std::fmt::Debug for MarkdownItem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Text(lines) => write!(f, "Text({} lines)", lines.len()),
-            Self::Image { alt, png } => {
-                write!(f, "Image({} bytes, alt={:?})", png.len(), alt)
-            }
+            Self::Text(l) => write!(f, "Text({} lines)", l.len()),
+            Self::Image { alt, png } => write!(f, "Image({} bytes, {:?})", png.len(), alt),
         }
     }
 }
@@ -123,10 +139,16 @@ pub enum PreviewState {
     GitDiff {
         lines: Vec<StyledLine>,
     },
-    /// Rich Markdown: mix of text blocks and rendered images (Mermaid + embedded).
+    /// Rich Markdown: source stored for lazy text rendering at actual panel width.
+    /// Text is re-rendered (fast, pure Rust) each time the panel width changes.
+    /// Images are pre-rendered async and stored as PNG bytes.
     RichMarkdown {
-        items: Vec<MarkdownItem>,
-        /// Total source lines (for the title counter).
+        /// Raw Markdown source — used to re-render text at the actual panel width.
+        source: String,
+        /// Directory of the .md file, for resolving relative `![](path)` URLs.
+        base_dir: Option<std::path::PathBuf>,
+        /// Pre-rendered images in source order (mermaid blocks + embedded images).
+        images: Vec<RenderedImage>,
         total_lines: usize,
     },
     Error(String),
@@ -335,9 +357,12 @@ pub struct AppState {
     /// `None` if the terminal does not support any image protocol or init failed.
     pub image_picker: Option<ratatui_image::picker::Picker>,
     /// Per-image render state for the current `RichMarkdown` preview.
-    /// Index matches the `Image` variant position in `PreviewState::RichMarkdown::items`.
     /// Wrapped in `RefCell` so the render function can mutate state through `&AppState`.
     pub image_protocols: std::cell::RefCell<Vec<ImageProtocolSlot>>,
+    /// Cached result of `render_markdown_rich` for the current `RichMarkdown` preview,
+    /// keyed by panel width.  Cleared whenever `PreviewState` changes.
+    /// Allows text to be re-rendered at the exact panel width without re-rendering images.
+    pub markdown_text_cache: std::cell::RefCell<Option<(u16, Vec<MarkdownItem>)>>,
 
     // MSLP — pass --dangerously-skip-permissions to Claude CLI
     pub mslp_enabled: bool,
@@ -397,6 +422,7 @@ impl AppState {
             git_file_status: std::collections::HashMap::new(),
             image_picker: None,
             image_protocols: std::cell::RefCell::new(vec![]),
+            markdown_text_cache: std::cell::RefCell::new(None),
             mslp_enabled: false,
             ai_provider: ai_config,
             ai_providers: vec![],
