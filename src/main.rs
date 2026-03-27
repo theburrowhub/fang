@@ -1236,8 +1236,9 @@ fn handle_event(event: Event, state: &mut AppState, tx: &UnboundedSender<Event>)
             // (status messages are informational and clear naturally on the next user action)
         }
         Event::PreviewReady(preview_state) => {
-            // Clear cached image protocols — they belong to the previous file.
+            // Clear caches — they belong to the previous file.
             state.image_protocols.borrow_mut().clear();
+            state.markdown_text_cache.borrow_mut().take();
             state.preview_state = preview_state;
             state.preview_scroll = 0;
         }

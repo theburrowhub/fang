@@ -1,5 +1,6 @@
 use crate::app::state::{
-    AppState, FocusedPanel, ImageProtocolSlot, MarkdownItem, PreviewState, StyledLine,
+    AppState, FocusedPanel, ImageProtocolSlot, MarkdownItem, PreviewState, RenderedImage,
+    StyledLine,
 };
 use crate::ui::utils::{format_size_verbose, panel_border_style};
 use ratatui::{
@@ -279,19 +280,42 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             frame.render_widget(Paragraph::new(display), inner);
         }
 
-        PreviewState::RichMarkdown { items, total_lines } => {
+        PreviewState::RichMarkdown {
+            source,
+            base_dir,
+            images,
+            total_lines,
+        } => {
             let title = format!(" Preview ({} lines) ", total_lines);
             let inner = render_block(frame, area, border_style, title);
             if inner.height == 0 {
                 return;
             }
 
-            let inner_width = inner.width as usize;
+            let inner_width = inner.width;
             let inner_height = inner.height as usize;
             // Image height: ≤ 30% of panel height, clamped to [3, 12] rows.
             let image_rows = (inner_height * 3 / 10).clamp(3, 12);
 
-            // Total visual rows for scroll clamping
+            // ── Re-render text at the actual panel width (cached by width) ──────
+            // `render_markdown_rich` is fast (pure Rust, no I/O) so doing it at
+            // draw time gives us perfectly-sized text for any terminal width.
+            let items: Vec<MarkdownItem> = {
+                let mut cache = state.markdown_text_cache.borrow_mut();
+                if cache.as_ref().map(|(w, _)| *w) != Some(inner_width) {
+                    // Width changed or first render — re-build.
+                    let rich = crate::preview::markdown::render_markdown_rich(
+                        source,
+                        inner_width,
+                        base_dir.as_deref(),
+                    );
+                    let new_items = build_rich_items(rich, images);
+                    *cache = Some((inner_width, new_items));
+                }
+                cache.as_ref().unwrap().1.clone()
+            };
+
+            // ── Scroll ────────────────────────────────────────────────────────
             let total_visual: usize = items
                 .iter()
                 .map(|item| match item {
@@ -302,29 +326,27 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             let max_scroll = total_visual.saturating_sub(inner_height);
             let scroll = state.preview_scroll.min(max_scroll);
 
-            // Ensure the protocol cache has a slot for every Image item
+            // Ensure the image-protocol cache has a slot for every Image item.
             let image_count = items
                 .iter()
                 .filter(|i| matches!(i, MarkdownItem::Image { .. }))
                 .count();
             {
-                let mut cache = state.image_protocols.borrow_mut();
-                while cache.len() < image_count {
-                    cache.push(ImageProtocolSlot { protocol: None });
+                let mut proto_cache = state.image_protocols.borrow_mut();
+                while proto_cache.len() < image_count {
+                    proto_cache.push(ImageProtocolSlot { protocol: None });
                 }
             }
 
+            // ── Render ────────────────────────────────────────────────────────
             let mut row = 0usize;
             let mut img_idx = 0usize;
 
-            'items: for item in items {
+            'items: for item in &items {
                 match item {
                     MarkdownItem::Text(lines) => {
-                        // Render the visible portion of this text block as a
-                        // single Paragraph — identical approach to PreviewState::Text.
                         let block_end = row + lines.len();
                         if block_end <= scroll {
-                            // Entire block is above the viewport — skip.
                             row = block_end;
                             continue;
                         }
@@ -346,7 +368,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                                 .iter()
                                 .skip(skip)
                                 .take(height as usize)
-                                .map(|sl| styled_line_to_line_padded(sl, inner_width))
+                                .map(|sl| styled_line_to_line_padded(sl, inner_width as usize))
                                 .collect();
                             frame.render_widget(Paragraph::new(display), block_area);
                         }
@@ -356,10 +378,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                         let img_top = row;
                         let img_bot = row + image_rows;
 
-                        if img_top < scroll + inner.height as usize && img_bot > scroll {
+                        if img_top < scroll + inner_height && img_bot > scroll {
                             let vis_top = img_top.max(scroll);
-                            let vis_height =
-                                (img_bot.min(scroll + inner.height as usize) - vis_top) as u16;
+                            let vis_height = (img_bot.min(scroll + inner_height) - vis_top) as u16;
                             let y = inner.y + (vis_top - scroll) as u16;
                             let img_area = Rect {
                                 x: inner.x,
@@ -377,11 +398,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                                 else {
                                     break 'render false;
                                 };
-                                let mut cache = state.image_protocols.borrow_mut();
-                                let Some(slot) = cache.get_mut(img_idx) else {
+                                let mut proto_cache = state.image_protocols.borrow_mut();
+                                let Some(slot) = proto_cache.get_mut(img_idx) else {
                                     break 'render false;
                                 };
-                                // Create stateful protocol lazily on first render
                                 if slot.protocol.is_none() {
                                     slot.protocol = Some(picker.new_resize_protocol(dyn_img));
                                 }
@@ -399,10 +419,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                             };
 
                             if !rendered {
-                                let msg = format!("[img: {}]", alt);
                                 frame.render_widget(
                                     Paragraph::new(Span::styled(
-                                        msg,
+                                        format!("[img: {}]", alt),
                                         Style::default()
                                             .fg(Color::DarkGray)
                                             .add_modifier(Modifier::ITALIC),
@@ -454,4 +473,45 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: true }), inner);
         }
     }
+}
+
+/// Convert `RichItem` list into `MarkdownItem` list, substituting pre-rendered images.
+///
+/// Images appear in source order; each Mermaid/ImageFile RichItem consumes one
+/// slot from `rendered_images`.
+fn build_rich_items(
+    rich: Vec<crate::preview::markdown::RichItem>,
+    rendered_images: &[RenderedImage],
+) -> Vec<MarkdownItem> {
+    let mut items = Vec::new();
+    let mut img_iter = rendered_images.iter();
+
+    for item in rich {
+        match item {
+            crate::preview::markdown::RichItem::Text(lines) => {
+                if !lines.is_empty() {
+                    items.push(MarkdownItem::Text(lines));
+                }
+            }
+            crate::preview::markdown::RichItem::Mermaid(_) => {
+                // Consume the next pre-rendered image slot.
+                if let Some(img) = img_iter.next() {
+                    items.push(MarkdownItem::Image {
+                        png: img.png.clone(),
+                        alt: img.alt.clone(),
+                    });
+                }
+                // If no slot (render failed at load time), the block is silently skipped.
+            }
+            crate::preview::markdown::RichItem::ImageFile { .. } => {
+                if let Some(img) = img_iter.next() {
+                    items.push(MarkdownItem::Image {
+                        png: img.png.clone(),
+                        alt: img.alt.clone(),
+                    });
+                }
+            }
+        }
+    }
+    items
 }
