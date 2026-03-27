@@ -1022,8 +1022,9 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
                     state.mode = app::state::AppMode::Normal;
                     state.focused_panel = app::state::FocusedPanel::AiChat;
                     let prompt_owned = prompt_text.clone();
+                    let mslp = state.mslp_enabled;
                     let handle = tokio::spawn(async move {
-                        commands::ai::run_ai_prompt(&config, &prompt_owned, &context, tx2).await;
+                        commands::ai::run_ai_prompt(&config, &prompt_owned, &context, mslp, tx2).await;
                     });
                     state.ai_task_handle = Some(handle.abort_handle());
                 } else {
@@ -1371,10 +1372,13 @@ async fn main() -> Result<()> {
     //              May be repeated: fang --with="claudec!" --with="mactop"
     let mut initial_dir_opt: Option<PathBuf> = None;
     let mut with_commands: Vec<String> = Vec::new();
+    let mut cli_mslp = false;
 
     for arg in std::env::args().skip(1) {
         if let Some(cmd) = arg.strip_prefix("--with=") {
             with_commands.push(cmd.to_string());
+        } else if arg == "--mslp" {
+            cli_mslp = true;
         } else if !arg.starts_with('-') {
             initial_dir_opt = Some(PathBuf::from(&arg));
         }
@@ -1398,10 +1402,15 @@ async fn main() -> Result<()> {
 
     // Initialize state
     // Load persisted config (sync read before TUI starts — acceptable for startup)
-    let cfg = config::load();
+    let mut cfg = config::load();
+    // CLI --mslp flag overrides (and persists) the config value.
+    if cli_mslp {
+        cfg.mslp.enabled = true;
+    }
     let mut state = AppState::new(initial_dir.clone(), ai_config);
     // Apply persisted panel visibility — p toggles this in-session without saving.
     state.preview_visible = cfg.layout.preview_visible;
+    state.mslp_enabled = cfg.mslp.enabled;
     state.config = cfg;
 
     // Setup internal event channel (for async results from background tasks)

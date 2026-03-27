@@ -281,6 +281,9 @@ pub struct AppState {
     /// Map from absolute path → git status, refreshed on every directory navigation.
     pub git_file_status: std::collections::HashMap<std::path::PathBuf, GitFileStatus>,
 
+    // MSLP — pass --dangerously-skip-permissions to Claude CLI
+    pub mslp_enabled: bool,
+
     // AI integration
     /// Currently configured AI provider (loaded from config or selected interactively).
     pub ai_provider: Option<crate::commands::ai::AiProviderConfig>,
@@ -334,6 +337,7 @@ impl AppState {
             command_stdin: None,
             config: crate::config::Config::default(),
             git_file_status: std::collections::HashMap::new(),
+            mslp_enabled: false,
             ai_provider: ai_config,
             ai_providers: vec![],
             ai_conversation: vec![],
