@@ -51,6 +51,65 @@ pub struct AiMessage {
     pub text: String,
 }
 
+// ─── Image protocol slot ──────────────────────────────────────────────────────
+
+/// Holds a ratatui-image protocol for one image in the preview.
+/// `None` until the image is first rendered (protocol is created lazily at render time).
+pub struct ImageProtocolSlot {
+    pub protocol: Option<ratatui_image::protocol::StatefulProtocol>,
+}
+
+impl std::fmt::Debug for ImageProtocolSlot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ImageProtocolSlot")
+    }
+}
+
+// ─── RichMarkdown ─────────────────────────────────────────────────────────────
+
+/// A pre-rendered image embedded in a Markdown file.
+/// PNG bytes were produced async (mermaid-rs-renderer → resvg, or image::open).
+pub struct RenderedImage {
+    pub alt: String,
+    pub png: Vec<u8>,
+}
+
+impl std::fmt::Debug for RenderedImage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "RenderedImage({} bytes, alt={:?})",
+            self.png.len(),
+            self.alt
+        )
+    }
+}
+
+impl Clone for RenderedImage {
+    fn clone(&self) -> Self {
+        Self {
+            alt: self.alt.clone(),
+            png: self.png.clone(),
+        }
+    }
+}
+
+/// One block in a rendered-at-draw-time Markdown preview.
+#[derive(Clone)]
+pub enum MarkdownItem {
+    Text(Vec<StyledLine>),
+    Image { png: Vec<u8>, alt: String },
+}
+
+impl std::fmt::Debug for MarkdownItem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Text(l) => write!(f, "Text({} lines)", l.len()),
+            Self::Image { alt, png } => write!(f, "Image({} bytes, {:?})", png.len(), alt),
+        }
+    }
+}
+
 // ─── PreviewState ─────────────────────────────────────────────────────────────
 
 /// What is currently shown in the preview panel.
@@ -80,10 +139,16 @@ pub enum PreviewState {
     GitDiff {
         lines: Vec<StyledLine>,
     },
-    /// Markdown file — source stored for lazy rendering at the actual panel width.
+    /// Rich Markdown: source stored for lazy text rendering at actual panel width.
     /// Text is re-rendered (fast, pure Rust) each time the panel width changes.
-    Markdown {
+    /// Images are pre-rendered async and stored as PNG bytes.
+    RichMarkdown {
+        /// Raw Markdown source — used to re-render text at the actual panel width.
         source: String,
+        /// Directory of the .md file, for resolving relative `![](path)` URLs.
+        base_dir: Option<std::path::PathBuf>,
+        /// Pre-rendered images in source order (mermaid blocks + embedded images).
+        images: Vec<RenderedImage>,
         total_lines: usize,
     },
     Error(String),
@@ -287,9 +352,17 @@ pub struct AppState {
     /// Map from absolute path → git status, refreshed on every directory navigation.
     pub git_file_status: std::collections::HashMap<std::path::PathBuf, GitFileStatus>,
 
-    /// Cached rendered lines for the current `Markdown` preview, keyed by panel width.
-    /// Cleared on every `PreviewReady` event so a new file always re-renders.
-    pub markdown_cache: std::cell::RefCell<Option<(u16, Vec<StyledLine>)>>,
+    // Image rendering (ratatui-image)
+    /// Terminal-image picker — detects protocol (Kitty, iTerm2, Sixel, half-block).
+    /// `None` if the terminal does not support any image protocol or init failed.
+    pub image_picker: Option<ratatui_image::picker::Picker>,
+    /// Per-image render state for the current `RichMarkdown` preview.
+    /// Wrapped in `RefCell` so the render function can mutate state through `&AppState`.
+    pub image_protocols: std::cell::RefCell<Vec<ImageProtocolSlot>>,
+    /// Cached result of `render_markdown_rich` for the current `RichMarkdown` preview,
+    /// keyed by panel width.  Cleared whenever `PreviewState` changes.
+    /// Allows text to be re-rendered at the exact panel width without re-rendering images.
+    pub markdown_text_cache: std::cell::RefCell<Option<(u16, Vec<MarkdownItem>)>>,
 
     // MSLP — pass --dangerously-skip-permissions to Claude CLI
     pub mslp_enabled: bool,
@@ -347,7 +420,9 @@ impl AppState {
             command_stdin: None,
             config: crate::config::Config::default(),
             git_file_status: std::collections::HashMap::new(),
-            markdown_cache: std::cell::RefCell::new(None),
+            image_picker: None,
+            image_protocols: std::cell::RefCell::new(vec![]),
+            markdown_text_cache: std::cell::RefCell::new(None),
             mslp_enabled: false,
             ai_provider: ai_config,
             ai_providers: vec![],

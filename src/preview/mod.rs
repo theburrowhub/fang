@@ -1,7 +1,8 @@
-use crate::app::state::{FileEntry, PreviewState};
+use crate::app::state::{FileEntry, PreviewState, RenderedImage};
 use std::path::Path;
 
 pub mod binary;
+pub mod images;
 pub mod makefile;
 pub mod markdown;
 pub mod text;
@@ -42,8 +43,7 @@ pub async fn load_preview(entry: &FileEntry) -> PreviewState {
                 return binary::load_binary_preview(&entry.path).await;
             }
 
-            // Markdown files: store the source and render lazily at draw time
-            // so the text always uses the actual panel width.
+            // Render Markdown files with formatting instead of raw syntax highlighting
             let ext = entry
                 .extension
                 .as_deref()
@@ -52,12 +52,47 @@ pub async fn load_preview(entry: &FileEntry) -> PreviewState {
             if MARKDOWN_EXTENSIONS.contains(&ext.as_str()) {
                 if let Ok(source) = String::from_utf8(data) {
                     let total_lines = source.lines().count();
-                    return PreviewState::Markdown {
-                        source,
-                        total_lines,
-                    };
+                    let base_dir = entry.path.parent();
+                    // Scan source for mermaid/image blocks only — text rendering is
+                    // deferred to draw time so it uses the actual panel width.
+                    let rich = markdown::render_markdown_rich(&source, 80, base_dir);
+                    let mut rendered_images: Vec<RenderedImage> = Vec::new();
+                    let mut has_images = false;
+                    for item in rich {
+                        match item {
+                            markdown::RichItem::Text(_) => {}
+                            markdown::RichItem::Mermaid(src) => {
+                                has_images = true;
+                                if let Some(png) = images::render_mermaid_to_png(&src) {
+                                    rendered_images.push(RenderedImage {
+                                        alt: "Mermaid diagram".to_string(),
+                                        png,
+                                    });
+                                }
+                                // Render failure → no slot added; draw code
+                                // detects mismatch and falls back to source text.
+                            }
+                            markdown::RichItem::ImageFile { path, alt } => {
+                                has_images = true;
+                                if let Some(png) = images::load_image_to_png(&path) {
+                                    rendered_images.push(RenderedImage { alt, png });
+                                }
+                            }
+                        }
+                    }
+                    if has_images {
+                        return PreviewState::RichMarkdown {
+                            source,
+                            base_dir: base_dir.map(|p| p.to_path_buf()),
+                            images: rendered_images,
+                            total_lines,
+                        };
+                    }
+                    // Pure text — render now (no images).
+                    let lines = markdown::render_markdown(&source, 200);
+                    return PreviewState::Text { lines, total_lines };
                 }
-                // Not valid UTF-8 — fall through to syntax-highlighted text path
+                // If not valid UTF-8 fall through to normal text path
                 return text::highlight_bytes(
                     &entry.path,
                     std::fs::read(&entry.path).unwrap_or_default(),

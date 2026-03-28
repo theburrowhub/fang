@@ -1,4 +1,7 @@
-use crate::app::state::{AppState, FocusedPanel, PreviewState, StyledLine};
+use crate::app::state::{
+    AppState, FocusedPanel, ImageProtocolSlot, MarkdownItem, PreviewState, RenderedImage,
+    StyledLine,
+};
 use crate::ui::utils::{format_size_verbose, panel_border_style};
 use ratatui::{
     prelude::*,
@@ -277,37 +280,180 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             frame.render_widget(Paragraph::new(display), inner);
         }
 
-        PreviewState::Markdown {
+        PreviewState::RichMarkdown {
             source,
+            base_dir,
+            images,
             total_lines,
         } => {
             let title = format!(" Preview ({} lines) ", total_lines);
             let inner = render_block(frame, area, border_style, title);
+            if inner.height == 0 {
+                return;
+            }
 
-            let inner_height = inner.height as usize;
             let inner_width = inner.width;
+            let inner_height = inner.height as usize;
+            // Image height: ≤ 30% of panel height, clamped to [3, 12] rows.
+            let image_rows = (inner_height * 3 / 10).clamp(3, 12);
 
-            // Re-render at the exact panel width — cached by width so resize is cheap.
-            let lines: Vec<StyledLine> = {
-                let mut cache = state.markdown_cache.borrow_mut();
+            // ── Re-render text at the actual panel width (cached by width) ──────
+            // `render_markdown_rich` is fast (pure Rust, no I/O) so doing it at
+            // draw time gives us perfectly-sized text for any terminal width.
+            let items: Vec<MarkdownItem> = {
+                let mut cache = state.markdown_text_cache.borrow_mut();
                 if cache.as_ref().map(|(w, _)| *w) != Some(inner_width) {
-                    let rendered = crate::preview::markdown::render_markdown(source, inner_width);
-                    *cache = Some((inner_width, rendered));
+                    // Width changed or first render — re-build.
+                    let rich = crate::preview::markdown::render_markdown_rich(
+                        source,
+                        inner_width,
+                        base_dir.as_deref(),
+                    );
+                    let new_items = build_rich_items(rich, images);
+                    *cache = Some((inner_width, new_items));
                 }
                 cache.as_ref().unwrap().1.clone()
             };
 
-            let max_scroll = lines.len().saturating_sub(inner_height);
+            // ── Scroll ────────────────────────────────────────────────────────
+            let total_visual: usize = items
+                .iter()
+                .map(|item| match item {
+                    MarkdownItem::Text(lines) => lines.len(),
+                    MarkdownItem::Image { .. } => image_rows,
+                })
+                .sum();
+            let max_scroll = total_visual.saturating_sub(inner_height);
             let scroll = state.preview_scroll.min(max_scroll);
 
-            let display: Vec<Line<'static>> = lines
+            // Ensure the image-protocol cache has a slot for every Image item.
+            let image_count = items
                 .iter()
-                .skip(scroll)
-                .take(inner_height)
-                .map(|sl| styled_line_to_line_padded(sl, inner_width as usize))
-                .collect();
+                .filter(|i| matches!(i, MarkdownItem::Image { .. }))
+                .count();
+            {
+                let mut proto_cache = state.image_protocols.borrow_mut();
+                while proto_cache.len() < image_count {
+                    proto_cache.push(ImageProtocolSlot { protocol: None });
+                }
+            }
 
-            frame.render_widget(Paragraph::new(display), inner);
+            // ── Render ────────────────────────────────────────────────────────
+            let mut row = 0usize;
+            let mut img_idx = 0usize;
+
+            'items: for item in &items {
+                match item {
+                    MarkdownItem::Text(lines) => {
+                        let block_end = row + lines.len();
+                        if block_end <= scroll {
+                            row = block_end;
+                            continue;
+                        }
+                        if row >= scroll + inner_height {
+                            break 'items;
+                        }
+                        let skip = scroll.saturating_sub(row);
+                        let take = inner_height.saturating_sub(row.saturating_sub(scroll));
+                        let y = inner.y + row.saturating_sub(scroll) as u16;
+                        let height = take.min(lines.len().saturating_sub(skip)) as u16;
+                        if height > 0 {
+                            let block_area = Rect {
+                                x: inner.x,
+                                y,
+                                width: inner.width,
+                                height,
+                            };
+                            let display: Vec<Line<'static>> = lines
+                                .iter()
+                                .skip(skip)
+                                .take(height as usize)
+                                .map(|sl| styled_line_to_line_padded(sl, inner_width as usize))
+                                .collect();
+                            frame.render_widget(Paragraph::new(display), block_area);
+                        }
+                        row = block_end;
+                    }
+                    MarkdownItem::Image { png, alt } => {
+                        let img_top = row;
+                        let img_bot = row + image_rows;
+
+                        if img_top < scroll + inner_height && img_bot > scroll {
+                            let vis_top = img_top.max(scroll);
+                            let vis_height = (img_bot.min(scroll + inner_height) - vis_top) as u16;
+                            let y = inner.y + (vis_top - scroll) as u16;
+
+                            // iTerm2 (and Sixel) scroll the terminal when the image
+                            // extends to/past the last row.  That scroll shifts all
+                            // subsequent ratatui MoveTo coordinates, producing the
+                            // rendering artifacts seen in the file-list panel.
+                            // Fix: clip the image height so it never reaches the last
+                            // terminal row.  The image may be partially clipped at the
+                            // bottom, but the layout stays correct.
+                            let terminal_rows = frame.area().height;
+                            let safe_height =
+                                vis_height.min(terminal_rows.saturating_sub(y).saturating_sub(1));
+                            if safe_height == 0 {
+                                // Image would be at or past the last row — skip it.
+                                row += image_rows;
+                                img_idx += 1;
+                                continue;
+                            }
+
+                            let img_area = Rect {
+                                x: inner.x,
+                                y,
+                                width: inner.width,
+                                height: safe_height,
+                            };
+
+                            let rendered = 'render: {
+                                let Some(picker) = state.image_picker.as_ref() else {
+                                    break 'render false;
+                                };
+                                let Some(dyn_img) =
+                                    crate::preview::images::png_to_dynamic_image(png)
+                                else {
+                                    break 'render false;
+                                };
+                                let mut proto_cache = state.image_protocols.borrow_mut();
+                                let Some(slot) = proto_cache.get_mut(img_idx) else {
+                                    break 'render false;
+                                };
+                                if slot.protocol.is_none() {
+                                    slot.protocol = Some(picker.new_resize_protocol(dyn_img));
+                                }
+                                let Some(proto) = slot.protocol.as_mut() else {
+                                    break 'render false;
+                                };
+                                use ratatui_image::protocol::StatefulProtocol;
+                                use ratatui_image::StatefulImage;
+                                frame.render_stateful_widget(
+                                    StatefulImage::<StatefulProtocol>::default(),
+                                    img_area,
+                                    proto,
+                                );
+                                true
+                            };
+
+                            if !rendered {
+                                frame.render_widget(
+                                    Paragraph::new(Span::styled(
+                                        format!("[img: {}]", alt),
+                                        Style::default()
+                                            .fg(Color::DarkGray)
+                                            .add_modifier(Modifier::ITALIC),
+                                    ))
+                                    .alignment(Alignment::Center),
+                                    img_area,
+                                );
+                            }
+                        }
+                        row += image_rows;
+                        img_idx += 1;
+                    }
+                }
+            }
         }
 
         PreviewState::TooLarge { size } => {
@@ -345,4 +491,45 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: true }), inner);
         }
     }
+}
+
+/// Convert `RichItem` list into `MarkdownItem` list, substituting pre-rendered images.
+///
+/// Images appear in source order; each Mermaid/ImageFile RichItem consumes one
+/// slot from `rendered_images`.
+fn build_rich_items(
+    rich: Vec<crate::preview::markdown::RichItem>,
+    rendered_images: &[RenderedImage],
+) -> Vec<MarkdownItem> {
+    let mut items = Vec::new();
+    let mut img_iter = rendered_images.iter();
+
+    for item in rich {
+        match item {
+            crate::preview::markdown::RichItem::Text(lines) => {
+                if !lines.is_empty() {
+                    items.push(MarkdownItem::Text(lines));
+                }
+            }
+            crate::preview::markdown::RichItem::Mermaid(_) => {
+                // Consume the next pre-rendered image slot.
+                if let Some(img) = img_iter.next() {
+                    items.push(MarkdownItem::Image {
+                        png: img.png.clone(),
+                        alt: img.alt.clone(),
+                    });
+                }
+                // If no slot (render failed at load time), the block is silently skipped.
+            }
+            crate::preview::markdown::RichItem::ImageFile { .. } => {
+                if let Some(img) = img_iter.next() {
+                    items.push(MarkdownItem::Image {
+                        png: img.png.clone(),
+                        alt: img.alt.clone(),
+                    });
+                }
+            }
+        }
+    }
+    items
 }

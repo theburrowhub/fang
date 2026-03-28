@@ -1236,8 +1236,9 @@ fn handle_event(event: Event, state: &mut AppState, tx: &UnboundedSender<Event>)
             // (status messages are informational and clear naturally on the next user action)
         }
         Event::PreviewReady(preview_state) => {
-            // Clear the markdown render cache — it belongs to the previous file.
-            state.markdown_cache.borrow_mut().take();
+            // Clear caches — they belong to the previous file.
+            state.image_protocols.borrow_mut().clear();
+            state.markdown_text_cache.borrow_mut().take();
             state.preview_state = preview_state;
             state.preview_scroll = 0;
         }
@@ -1404,10 +1405,17 @@ async fn main() -> Result<()> {
     // Load AI config before entering raw mode to avoid blocking the TUI on slow filesystems.
     let ai_config = commands::ai::load_config();
 
+    // Initialise image picker BEFORE entering raw mode so the terminal-capability
+    // query (escape sequence roundtrip) can use normal stdio.
+    let image_picker = ratatui_image::picker::Picker::from_query_stdio()
+        .map_err(|e| tracing::debug!("image picker init failed (no image support): {}", e))
+        .ok();
+
     // Initialize state
     // Load persisted config (sync read before TUI starts — acceptable for startup)
     let cfg = config::load();
     let mut state = AppState::new(initial_dir.clone(), ai_config);
+    state.image_picker = image_picker;
     // Apply persisted panel visibility — p toggles this in-session without saving.
     state.preview_visible = cfg.layout.preview_visible;
     // CLI --mslp is a session-only override — never written back to config.
