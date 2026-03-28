@@ -1,6 +1,4 @@
-use crate::app::state::{
-    AppState, FocusedPanel, ImageProtocolSlot, MarkdownItem, PreviewState, StyledLine,
-};
+use crate::app::state::{AppState, FocusedPanel, PreviewState, StyledLine};
 use crate::ui::utils::{format_size_verbose, panel_border_style};
 use ratatui::{
     prelude::*,
@@ -279,131 +277,37 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             frame.render_widget(Paragraph::new(display), inner);
         }
 
-        PreviewState::RichMarkdown { items, total_lines } => {
+        PreviewState::Markdown {
+            source,
+            total_lines,
+        } => {
             let title = format!(" Preview ({} lines) ", total_lines);
             let inner = render_block(frame, area, border_style, title);
-            if inner.height == 0 {
-                return;
-            }
 
-            let inner_width = inner.width as usize;
-            // Each image occupies this many terminal rows in the layout
-            let image_rows = (inner.height as usize / 3).clamp(4, 24);
+            let inner_height = inner.height as usize;
+            let inner_width = inner.width;
 
-            // Total visual rows for scroll clamping
-            let total_visual: usize = items
-                .iter()
-                .map(|item| match item {
-                    MarkdownItem::Text(lines) => lines.len(),
-                    MarkdownItem::Image { .. } => image_rows,
-                })
-                .sum();
-            let max_scroll = total_visual.saturating_sub(inner.height as usize);
+            // Re-render at the exact panel width — cached by width so resize is cheap.
+            let lines: Vec<StyledLine> = {
+                let mut cache = state.markdown_cache.borrow_mut();
+                if cache.as_ref().map(|(w, _)| *w) != Some(inner_width) {
+                    let rendered = crate::preview::markdown::render_markdown(source, inner_width);
+                    *cache = Some((inner_width, rendered));
+                }
+                cache.as_ref().unwrap().1.clone()
+            };
+
+            let max_scroll = lines.len().saturating_sub(inner_height);
             let scroll = state.preview_scroll.min(max_scroll);
 
-            // Ensure the protocol cache has a slot for every Image item
-            let image_count = items
+            let display: Vec<Line<'static>> = lines
                 .iter()
-                .filter(|i| matches!(i, MarkdownItem::Image { .. }))
-                .count();
-            {
-                let mut cache = state.image_protocols.borrow_mut();
-                while cache.len() < image_count {
-                    cache.push(ImageProtocolSlot { protocol: None });
-                }
-            }
+                .skip(scroll)
+                .take(inner_height)
+                .map(|sl| styled_line_to_line_padded(sl, inner_width as usize))
+                .collect();
 
-            let mut row = 0usize;
-            let mut img_idx = 0usize;
-
-            'items: for item in items {
-                match item {
-                    MarkdownItem::Text(lines) => {
-                        for sl in lines {
-                            if row >= scroll + inner.height as usize {
-                                break 'items;
-                            }
-                            if row >= scroll {
-                                let y = inner.y + (row - scroll) as u16;
-                                let line_area = Rect {
-                                    x: inner.x,
-                                    y,
-                                    width: inner.width,
-                                    height: 1,
-                                };
-                                frame.render_widget(
-                                    Paragraph::new(styled_line_to_line_padded(sl, inner_width)),
-                                    line_area,
-                                );
-                            }
-                            row += 1;
-                        }
-                    }
-                    MarkdownItem::Image { png, alt } => {
-                        let img_top = row;
-                        let img_bot = row + image_rows;
-
-                        if img_top < scroll + inner.height as usize && img_bot > scroll {
-                            let vis_top = img_top.max(scroll);
-                            let vis_height =
-                                (img_bot.min(scroll + inner.height as usize) - vis_top) as u16;
-                            let y = inner.y + (vis_top - scroll) as u16;
-                            let img_area = Rect {
-                                x: inner.x,
-                                y,
-                                width: inner.width,
-                                height: vis_height,
-                            };
-
-                            let rendered = 'render: {
-                                let Some(picker) = state.image_picker.as_ref() else {
-                                    break 'render false;
-                                };
-                                let Some(dyn_img) =
-                                    crate::preview::images::png_to_dynamic_image(png)
-                                else {
-                                    break 'render false;
-                                };
-                                let mut cache = state.image_protocols.borrow_mut();
-                                let Some(slot) = cache.get_mut(img_idx) else {
-                                    break 'render false;
-                                };
-                                // Create stateful protocol lazily on first render
-                                if slot.protocol.is_none() {
-                                    slot.protocol = Some(picker.new_resize_protocol(dyn_img));
-                                }
-                                let Some(proto) = slot.protocol.as_mut() else {
-                                    break 'render false;
-                                };
-                                use ratatui_image::protocol::StatefulProtocol;
-                                use ratatui_image::StatefulImage;
-                                frame.render_stateful_widget(
-                                    StatefulImage::<StatefulProtocol>::default(),
-                                    img_area,
-                                    proto,
-                                );
-                                true
-                            };
-
-                            if !rendered {
-                                let msg = format!("[img: {}]", alt);
-                                frame.render_widget(
-                                    Paragraph::new(Span::styled(
-                                        msg,
-                                        Style::default()
-                                            .fg(Color::DarkGray)
-                                            .add_modifier(Modifier::ITALIC),
-                                    ))
-                                    .alignment(Alignment::Center),
-                                    img_area,
-                                );
-                            }
-                        }
-                        row += image_rows;
-                        img_idx += 1;
-                    }
-                }
-            }
+            frame.render_widget(Paragraph::new(display), inner);
         }
 
         PreviewState::TooLarge { size } => {
