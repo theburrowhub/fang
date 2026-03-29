@@ -382,11 +382,29 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                             let vis_top = img_top.max(scroll);
                             let vis_height = (img_bot.min(scroll + inner_height) - vis_top) as u16;
                             let y = inner.y + (vis_top - scroll) as u16;
+
+                            // iTerm2 (and Sixel) scroll the terminal when the image
+                            // extends to/past the last row.  That scroll shifts all
+                            // subsequent ratatui MoveTo coordinates, producing the
+                            // rendering artifacts seen in the file-list panel.
+                            // Fix: clip the image height so it never reaches the last
+                            // terminal row.  The image may be partially clipped at the
+                            // bottom, but the layout stays correct.
+                            let terminal_rows = frame.area().height;
+                            let safe_height =
+                                vis_height.min(terminal_rows.saturating_sub(y).saturating_sub(1));
+                            if safe_height == 0 {
+                                // Image would be at or past the last row — skip it.
+                                row += image_rows;
+                                img_idx += 1;
+                                continue;
+                            }
+
                             let img_area = Rect {
                                 x: inner.x,
                                 y,
                                 width: inner.width,
-                                height: vis_height,
+                                height: safe_height,
                             };
 
                             let rendered = 'render: {
