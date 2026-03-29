@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.13.2] — 2026-03-29
+
+### Bug Fixes
+
+- Revert inline image rendering, keep exact-width markdown text (#43) ([d0aa902](https://github.com/theburrowhub/fang/commit/d0aa9029c3923f5f44d773b64bcdddd8eb20cf75))
+
+
 ## [0.13.1] — 2026-03-27
 
 ### Bug Fixes
