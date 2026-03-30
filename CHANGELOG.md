@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.13.3] — 2026-03-30
+
+### Bug Fixes
+
+- Render images post-draw to prevent terminal scroll artifacts (#44) ([25d9314](https://github.com/theburrowhub/fang/commit/25d931420b8e8690b7ab4379d8809bb896451636))
+
+
 ## [0.13.2] — 2026-03-29
 
 ### Bug Fixes
