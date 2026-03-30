@@ -332,7 +332,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
 
             // ── Render ────────────────────────────────────────────────────────
             let mut row = 0usize;
-            let mut img_idx = 0usize;
+            let mut _img_idx = 0usize;
 
             'items: for item in &items {
                 match item {
@@ -411,7 +411,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                             }
                         }
                         row += image_rows;
-                        img_idx += 1;
+                        _img_idx += 1;
                     }
                 }
             }
