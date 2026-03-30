@@ -1,5 +1,5 @@
 use crate::app::state::{
-    AppState, FocusedPanel, ImageProtocolSlot, MarkdownItem, PreviewState, RenderedImage,
+    AppState, FocusedPanel, MarkdownItem, PendingImageRender, PreviewState, RenderedImage,
     StyledLine,
 };
 use crate::ui::utils::{format_size_verbose, panel_border_style};
@@ -327,20 +327,12 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             let scroll = state.preview_scroll.min(max_scroll);
 
             // Ensure the image-protocol cache has a slot for every Image item.
-            let image_count = items
-                .iter()
-                .filter(|i| matches!(i, MarkdownItem::Image { .. }))
-                .count();
-            {
-                let mut proto_cache = state.image_protocols.borrow_mut();
-                while proto_cache.len() < image_count {
-                    proto_cache.push(ImageProtocolSlot { protocol: None });
-                }
-            }
+            // Clear pending images from any previous frame before queueing new ones.
+            state.pending_image_renders.borrow_mut().clear();
 
             // ── Render ────────────────────────────────────────────────────────
             let mut row = 0usize;
-            let mut img_idx = 0usize;
+            let mut _img_idx = 0usize;
 
             'items: for item in &items {
                 match item {
@@ -383,60 +375,29 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                             let vis_height = (img_bot.min(scroll + inner_height) - vis_top) as u16;
                             let y = inner.y + (vis_top - scroll) as u16;
 
-                            // iTerm2 (and Sixel) scroll the terminal when the image
-                            // extends to/past the last row.  That scroll shifts all
-                            // subsequent ratatui MoveTo coordinates, producing the
-                            // rendering artifacts seen in the file-list panel.
-                            // Fix: clip the image height so it never reaches the last
-                            // terminal row.  The image may be partially clipped at the
-                            // bottom, but the layout stays correct.
-                            let terminal_rows = frame.area().height;
-                            let safe_height =
-                                vis_height.min(terminal_rows.saturating_sub(y).saturating_sub(1));
-                            if safe_height == 0 {
-                                // Image would be at or past the last row — skip it.
-                                row += image_rows;
-                                img_idx += 1;
-                                continue;
-                            }
-
-                            let img_area = Rect {
-                                x: inner.x,
-                                y,
-                                width: inner.width,
-                                height: safe_height,
-                            };
-
-                            let rendered = 'render: {
-                                let Some(picker) = state.image_picker.as_ref() else {
-                                    break 'render false;
+                            // Queue image for post-draw rendering — writing iTerm2 escape
+                            // sequences directly to stdout AFTER terminal.draw() avoids the
+                            // pre-clearing CUD loop in ratatui-image's buffer implementation
+                            // that causes terminal scroll and layout corruption.
+                            if !png.is_empty() && std::env::var("ITERM_SESSION_ID").is_ok() {
+                                state
+                                    .pending_image_renders
+                                    .borrow_mut()
+                                    .push(PendingImageRender {
+                                        x: inner.x,
+                                        y,
+                                        cols: inner.width,
+                                        rows: vis_height,
+                                        png: png.clone(),
+                                    });
+                            } else {
+                                // Non-iTerm2 terminal or no PNG — show placeholder
+                                let img_area = Rect {
+                                    x: inner.x,
+                                    y,
+                                    width: inner.width,
+                                    height: vis_height,
                                 };
-                                let Some(dyn_img) =
-                                    crate::preview::images::png_to_dynamic_image(png)
-                                else {
-                                    break 'render false;
-                                };
-                                let mut proto_cache = state.image_protocols.borrow_mut();
-                                let Some(slot) = proto_cache.get_mut(img_idx) else {
-                                    break 'render false;
-                                };
-                                if slot.protocol.is_none() {
-                                    slot.protocol = Some(picker.new_resize_protocol(dyn_img));
-                                }
-                                let Some(proto) = slot.protocol.as_mut() else {
-                                    break 'render false;
-                                };
-                                use ratatui_image::protocol::StatefulProtocol;
-                                use ratatui_image::StatefulImage;
-                                frame.render_stateful_widget(
-                                    StatefulImage::<StatefulProtocol>::default(),
-                                    img_area,
-                                    proto,
-                                );
-                                true
-                            };
-
-                            if !rendered {
                                 frame.render_widget(
                                     Paragraph::new(Span::styled(
                                         format!("[img: {}]", alt),
@@ -450,7 +411,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                             }
                         }
                         row += image_rows;
-                        img_idx += 1;
+                        _img_idx += 1;
                     }
                 }
             }

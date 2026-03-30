@@ -43,10 +43,3 @@ pub fn load_image_to_png(path: &std::path::Path) -> Option<Vec<u8>> {
         .ok()?;
     Some(buf)
 }
-
-/// Decode PNG bytes to a `DynamicImage` for ratatui-image.
-pub fn png_to_dynamic_image(png: &[u8]) -> Option<image::DynamicImage> {
-    image::load_from_memory_with_format(png, image::ImageFormat::Png)
-        .map_err(|e| tracing::warn!("DynamicImage decode failed: {}", e))
-        .ok()
-}
