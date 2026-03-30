@@ -1237,7 +1237,7 @@ fn handle_event(event: Event, state: &mut AppState, tx: &UnboundedSender<Event>)
         }
         Event::PreviewReady(preview_state) => {
             // Clear caches — they belong to the previous file.
-            state.image_protocols.borrow_mut().clear();
+            state.pending_image_renders.borrow_mut().clear();
             state.markdown_text_cache.borrow_mut().take();
             state.preview_state = preview_state;
             state.preview_scroll = 0;
@@ -1356,6 +1356,48 @@ fn handle_event(event: Event, state: &mut AppState, tx: &UnboundedSender<Event>)
     }
 }
 
+/// Write any images queued during the draw phase directly to the terminal stdout.
+///
+/// For iTerm2, images are sent as OSC 1337 inline image sequences with
+/// `doNotMoveCursor=1` to avoid cursor side-effects.  Using this post-draw
+/// approach instead of ratatui's buffer avoids the pre-clearing CUD loop in
+/// ratatui-image that caused terminal scroll and layout corruption.
+fn flush_pending_images(state: &mut app::state::AppState) -> Result<()> {
+    use base64::Engine as _;
+    use std::io::Write;
+
+    let renders: Vec<app::state::PendingImageRender> =
+        state.pending_image_renders.borrow_mut().drain(..).collect();
+
+    if renders.is_empty() {
+        return Ok(());
+    }
+
+    let mut stdout = std::io::stdout().lock();
+    for r in &renders {
+        // Resize the image to the exact cell dimensions so iTerm2 uses the
+        // right number of cells (width=Ncells means N terminal columns).
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&r.png);
+        // Position the cursor, write the sequence, restore cursor to top-left.
+        // doNotMoveCursor=1 tells iTerm2 not to advance the cursor after rendering.
+        write!(
+            stdout,
+            "\x1b[{row};{col}H\
+             \x1b]1337;File=inline=1;size={size};\
+             width={cols};height={rows};\
+             preserveAspectRatio=1;doNotMoveCursor=1:{data}\x07",
+            row = r.y + 1, // iTerm2 uses 1-based rows
+            col = r.x + 1, // iTerm2 uses 1-based columns
+            size = r.png.len(),
+            cols = r.cols,
+            rows = r.rows,
+            data = encoded,
+        )?;
+    }
+    stdout.flush()?;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Setup logging to file (don't pollute the terminal)
@@ -1405,17 +1447,10 @@ async fn main() -> Result<()> {
     // Load AI config before entering raw mode to avoid blocking the TUI on slow filesystems.
     let ai_config = commands::ai::load_config();
 
-    // Initialise image picker BEFORE entering raw mode so the terminal-capability
-    // query (escape sequence roundtrip) can use normal stdio.
-    let image_picker = ratatui_image::picker::Picker::from_query_stdio()
-        .map_err(|e| tracing::debug!("image picker init failed (no image support): {}", e))
-        .ok();
-
     // Initialize state
     // Load persisted config (sync read before TUI starts — acceptable for startup)
     let cfg = config::load();
     let mut state = AppState::new(initial_dir.clone(), ai_config);
-    state.image_picker = image_picker;
     // Apply persisted panel visibility — p toggles this in-session without saving.
     state.preview_visible = cfg.layout.preview_visible;
     // CLI --mslp is a session-only override — never written back to config.
@@ -1516,6 +1551,11 @@ async fn main() -> Result<()> {
 
         // Render current state
         terminal.draw(|f| ui::layout::draw(f, &state))?;
+
+        // Flush any images queued during the draw using the iTerm2 inline image
+        // protocol written directly to stdout — bypasses ratatui's buffer and
+        // avoids the cursor/scroll side-effects that caused layout corruption.
+        flush_pending_images(&mut state)?;
 
         if state.should_quit {
             break;

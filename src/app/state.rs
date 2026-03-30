@@ -51,18 +51,23 @@ pub struct AiMessage {
     pub text: String,
 }
 
-// ─── Image protocol slot ──────────────────────────────────────────────────────
+// ─── Pending image renders ────────────────────────────────────────────────────
 
-/// Holds a ratatui-image protocol for one image in the preview.
-/// `None` until the image is first rendered (protocol is created lazily at render time).
-pub struct ImageProtocolSlot {
-    pub protocol: Option<ratatui_image::protocol::StatefulProtocol>,
-}
-
-impl std::fmt::Debug for ImageProtocolSlot {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ImageProtocolSlot")
-    }
+/// An image to be written directly to stdout AFTER terminal.draw() completes.
+/// This avoids ratatui's buffer model entirely, preventing the cursor/scroll
+/// side-effects that the iTerm2 pre-clearing loop would cause inside the buffer.
+#[derive(Debug, Clone)]
+pub struct PendingImageRender {
+    /// Terminal column of the top-left corner.
+    pub x: u16,
+    /// Terminal row of the top-left corner.
+    pub y: u16,
+    /// Width in terminal columns.
+    pub cols: u16,
+    /// Height in terminal rows.
+    pub rows: u16,
+    /// PNG bytes to encode and send.
+    pub png: Vec<u8>,
 }
 
 // ─── RichMarkdown ─────────────────────────────────────────────────────────────
@@ -352,16 +357,11 @@ pub struct AppState {
     /// Map from absolute path → git status, refreshed on every directory navigation.
     pub git_file_status: std::collections::HashMap<std::path::PathBuf, GitFileStatus>,
 
-    // Image rendering (ratatui-image)
-    /// Terminal-image picker — detects protocol (Kitty, iTerm2, Sixel, half-block).
-    /// `None` if the terminal does not support any image protocol or init failed.
-    pub image_picker: Option<ratatui_image::picker::Picker>,
-    /// Per-image render state for the current `RichMarkdown` preview.
-    /// Wrapped in `RefCell` so the render function can mutate state through `&AppState`.
-    pub image_protocols: std::cell::RefCell<Vec<ImageProtocolSlot>>,
+    /// Images queued to be written directly to stdout after terminal.draw().
+    /// Populated by preview.rs during rendering; consumed by main.rs after each frame.
+    pub pending_image_renders: std::cell::RefCell<Vec<PendingImageRender>>,
     /// Cached result of `render_markdown_rich` for the current `RichMarkdown` preview,
     /// keyed by panel width.  Cleared whenever `PreviewState` changes.
-    /// Allows text to be re-rendered at the exact panel width without re-rendering images.
     pub markdown_text_cache: std::cell::RefCell<Option<(u16, Vec<MarkdownItem>)>>,
 
     // MSLP — pass --dangerously-skip-permissions to Claude CLI
@@ -420,8 +420,7 @@ impl AppState {
             command_stdin: None,
             config: crate::config::Config::default(),
             git_file_status: std::collections::HashMap::new(),
-            image_picker: None,
-            image_protocols: std::cell::RefCell::new(vec![]),
+            pending_image_renders: std::cell::RefCell::new(vec![]),
             markdown_text_cache: std::cell::RefCell::new(None),
             mslp_enabled: false,
             ai_provider: ai_config,
