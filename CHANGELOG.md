@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Fang are documented here.
+## [0.14.0] — 2026-04-13
+
+### Features
+
+- O opens the containing directory in the system file manager (#45) ([ffd6afa](https://github.com/theburrowhub/fang/commit/ffd6afaca5a6889b685c41109445cedb166cb2c6))
+
+
 ## [0.13.3] — 2026-03-30
 
 ### Bug Fixes
