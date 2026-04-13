@@ -745,6 +745,30 @@ fn handle_action(action: &Action, state: &mut AppState, tx: &UnboundedSender<Eve
                 }
             }
         }
+        Action::OpenParentDirWithSystem => {
+            let dir = if let Some(entry) = state.selected_entry() {
+                // For a file, open its parent; for a directory, open itself.
+                if entry.is_dir {
+                    entry.path.clone()
+                } else {
+                    entry
+                        .path
+                        .parent()
+                        .map(|p| p.to_path_buf())
+                        .unwrap_or(state.current_dir.clone())
+                }
+            } else {
+                state.current_dir.clone()
+            };
+            match commands::open::open_with_system(&dir) {
+                Ok(()) => {
+                    state.status_message = Some(format!("Opened dir: {}", dir.display()));
+                }
+                Err(e) => {
+                    state.status_message = Some(format!("Open error: {}", e));
+                }
+            }
+        }
         // ── New file ──────────────────────────────────────────────────────────
         Action::OpenNewFile => {
             state.mode = app::state::AppMode::NewFile {

@@ -39,6 +39,7 @@ pub enum Action {
     RunGitItem,
     // Open with system default
     OpenWithSystem,
+    OpenParentDirWithSystem,
     // Copy path
     CopyRelPath,
     CopyAbsPath,
@@ -194,6 +195,7 @@ pub fn map_key_to_action(
             KeyCode::Char('C') => Action::CopyAbsPath,
             KeyCode::Char('d') => Action::ToggleGitDiff,
             KeyCode::Char('o') => Action::OpenWithSystem,
+            KeyCode::Char('O') => Action::OpenParentDirWithSystem,
             KeyCode::Char('n') => Action::OpenNewFile,
             KeyCode::Char('N') => Action::OpenNewFileFromClipboard,
             KeyCode::Char('a') => Action::ToggleAiPanel,
